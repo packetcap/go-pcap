@@ -1,4 +1,4 @@
-package main
+package pcap
 
 /*
  MacOS uses a /dev/bpf* device; look it up from there, e.g. https://github.com/c-bata/xpcap/blob/master/sniffer.c#L50
