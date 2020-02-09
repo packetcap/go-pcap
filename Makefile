@@ -44,7 +44,7 @@ $(BINDIR):
 
 build: $(LOCALBIN) $(BIN)
 $(LOCALBIN): $(BINDIR)
-	CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o $@ .
+	CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o $@ ./cmd
 $(BIN):
 	if [ "$(OS)" = "$(BUILDOS)" -a "$(ARCH)" = "$(BUILDARCH)" ]; then ln -s $(LOCALBIN) $@; fi
 
