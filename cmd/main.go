@@ -20,9 +20,7 @@ func main() {
 	if c, err = pcap.Listen(iface, 65536, true, true, 0); err != nil {
 		log.Fatal(err)
 	}
-	go func() {
-		for p := range c {
-			fmt.Printf("packet size %d, first bytes %#v\n", p.Info.CaptureLength, p.B[:50])
-		}
-	}()
+	for p := range c {
+		fmt.Printf("packet size %d, first bytes %#v\n", p.Info.CaptureLength, p.B[:50])
+	}
 }
