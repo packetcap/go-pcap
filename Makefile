@@ -46,14 +46,14 @@ build: $(LOCALBIN) $(BIN)
 $(LOCALBIN): $(BINDIR)
 	CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o $@ ./cmd
 $(BIN):
-	if [ "$(OS)" = "$(BUILDOS)" -a "$(ARCH)" = "$(BUILDARCH)" ]; then ln -s $(LOCALBIN) $@; fi
+	@if [ "$(OS)" = "$(BUILDOS)" -a "$(ARCH)" = "$(BUILDARCH)" ]; then ln -s $(LOCALBIN) $@; fi
 
 install: $(INSTALLBIN)
 $(INSTALLBIN):
 	CGO_ENABLED=0 go build -o $@
 
 clean:
-	@rm -f $(BIN)
+	@rm -rf $(BIN) $(BINDIR)
 
 fmt:
 	gofmt -w -s $(GOFILES)
