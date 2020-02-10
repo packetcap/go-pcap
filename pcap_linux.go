@@ -29,14 +29,14 @@ type Handle struct {
 	ring        []byte
 }
 
-func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
+func (h Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
 	if h.syscalls {
 		return h.readPacketDataSyscall()
 	}
 	return h.readPacketDataMmap()
 }
 
-func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
+func (h Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	b := make([]byte, h.snaplen)
 	read, _, err := syscall.Recvfrom(h.fd, b, 0)
 	if err != nil {
@@ -52,7 +52,7 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	return b, ci, nil
 }
 
-func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
+func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
 	// we do not have this worked out yet
 	return nil, gopacket.CaptureInfo{}, nil
 }
@@ -62,9 +62,10 @@ func htons(in uint16) uint16 {
 }
 
 // OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/google/gopacket#PacketDataSource
-// so you can pass it there
+// so you can pass it there.
 func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration) (handle *Handle, _ error) {
-	return openLive(device, snaplen, promiscuous, timeout, false)
+	// TODO: change this from syscalls (last arg true) to mmap (last arg false) when mmap works
+	return openLive(device, snaplen, promiscuous, timeout, true)
 }
 
 func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
