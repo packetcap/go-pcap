@@ -21,8 +21,9 @@ const (
 )
 
 type Packet struct {
-	B    []byte
-	Info gopacket.CaptureInfo
+	B     []byte
+	Info  gopacket.CaptureInfo
+	Error error
 }
 type Handle struct {
 	syscalls    bool
@@ -135,21 +136,22 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	return &h, nil
 }
 
-// Listen simple one-step command to open, listen and send packets over a channel
-func Listen(iface string, snaplen int32, promiscuous, syscalls bool, timeout time.Duration, c chan Packet) error {
+// Listen simple one-step command to open, listen and send packets over a returned channel
+func Listen(iface string, snaplen int32, promiscuous, syscalls bool, timeout time.Duration) (chan Packet, error) {
 	h, err := openLive(iface, snaplen, promiscuous, timeout, syscalls)
 	if err != nil {
-		return fmt.Errorf("failed to open interface for listening: %v", err)
+		return nil, fmt.Errorf("failed to open interface for listening: %v", err)
 	}
-	for {
-		b, ci, err := h.ReadPacketData()
-		if err != nil {
-			return fmt.Errorf("error reading: %v", err)
+	c := make(chan Packet, 50)
+	go func() {
+		for {
+			b, ci, err := h.ReadPacketData()
+			c <- Packet{
+				B:     b,
+				Info:  ci,
+				Error: err,
+			}
 		}
-		c <- Packet{
-			B:    b,
-			Info: ci,
-		}
-	}
-	return nil
+	}()
+	return c, nil
 }
