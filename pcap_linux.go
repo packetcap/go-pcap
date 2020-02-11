@@ -160,7 +160,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 
 		// create the sockaddr_ll
 		sa := syscall.SockaddrLinklayer{
-			Protocol: syscall.ETH_P_ALL,
+			Protocol: htons(syscall.ETH_P_ALL),
 			Ifindex:  in.Index,
 		}
 		// bind to it
