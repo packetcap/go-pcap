@@ -8,6 +8,7 @@ import (
 	syscall "golang.org/x/sys/unix"
 	"net"
 	"time"
+	"unsafe"
 
 	"github.com/google/gopacket"
 )
@@ -24,6 +25,13 @@ const (
 	EthHlen               = 0x10
 )
 
+var (
+	packetSALLSize           int32
+	alignedTpacketHdrSize    int32
+	alignedTpacketSALLSize   int32
+	alignedTpacketAllHdrSize int32
+)
+
 type Handle struct {
 	syscalls        bool
 	promiscuous     bool
@@ -38,6 +46,7 @@ type Handle struct {
 	frameNumbers    uint32
 	blockSize       uint32
 	pollfd          []syscall.PollFd
+	endian          binary.ByteOrder
 }
 
 func (h Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
@@ -66,7 +75,7 @@ func (h Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, e
 func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
 	// we check the bit setting on the pointer
 	if h.pollfd == nil {
-		h.pollfd = []syscall.PollFd{{Fd: int32(h.fd)}}
+		h.pollfd = []syscall.PollFd{{Fd: int32(h.fd), Events: syscall.POLLIN}}
 	}
 	if h.ring[h.framePtr]&syscall.TP_STATUS_USER != syscall.TP_STATUS_USER {
 		val, err := syscall.Poll(h.pollfd, -1)
@@ -80,17 +89,16 @@ func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err 
 	}
 	// read the header
 	b := h.ring[h.framePtr:]
-	buf := bytes.NewBuffer(b[:syscall.SizeofTpacketHdr])
+	buf := bytes.NewBuffer(b[:alignedTpacketHdrSize])
 	hdr := syscall.TpacketHdr{}
-	// is this really bigendian?
-	err = binary.Read(buf, binary.BigEndian, &hdr)
+	err = binary.Read(buf, h.endian, &hdr)
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading header: %v", err)
 	}
-	// read the sockeraddr_ll
-	buf = bytes.NewBuffer(b[syscall.SizeofTpacketHdr : syscall.SizeofTpacketHdr+syscall.SizeofSockaddrLinklayer])
-	sall := syscall.SockaddrLinklayer{}
-	err = binary.Read(buf, binary.BigEndian, &sall)
+	// read the sockaddr_ll
+	// unfortunately, we cannot do binary.Read() because syscall.SockaddrLinklayer has an embedded slice
+	// so we have to read it manually
+	sall, err := parseSocketAddrLinkLayer(b[alignedTpacketHdrSize:alignedTpacketAllHdrSize], h.endian)
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading header: %v", err)
 	}
@@ -104,9 +112,9 @@ func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err 
 		Length:         int(hdr.Len),
 		CaptureLength:  int(hdr.Snaplen),
 		Timestamp:      time.Unix(int64(hdr.Sec), int64(hdr.Usec*1000)),
-		InterfaceIndex: sall.Ifindex,
+		InterfaceIndex: int(sall.Ifindex),
 	}
-	data = b[:hdr.Snaplen]
+	data = b[alignedTpacketAllHdrSize : uint32(alignedTpacketAllHdrSize)+hdr.Snaplen]
 
 	// indicate we are done with this frame, send back to the kernel
 	h.ring[h.framePtr] = syscall.TP_STATUS_KERNEL
@@ -121,7 +129,7 @@ func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err 
 	frameIndexDiff := h.frameIndex % h.framesPerBuffer
 	h.framePtr = int(bufferIndex + frameIndexDiff*h.frameSize)
 
-	return nil, ci, nil
+	return data, ci, nil
 }
 
 func htons(in uint16) uint16 {
@@ -135,7 +143,6 @@ func tpacketAlign(base int32) int32 {
 // OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/google/gopacket#PacketDataSource
 // so you can pass it there.
 func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration) (handle *Handle, _ error) {
-	// TODO: change this from syscalls (last arg true) to mmap (last arg false) when mmap works
 	return openLive(device, snaplen, promiscuous, timeout, false)
 }
 
@@ -144,6 +151,20 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		snaplen:  snaplen,
 		syscalls: syscalls,
 	}
+	// we need to know our endianness
+	endianness, err := getEndianness()
+	if err != nil {
+		return nil, err
+	}
+	h.endian = endianness
+
+	// because syscall package does not provide this
+	sall := syscall.SockaddrLinklayer{}
+	packetSALLSize = int32(unsafe.Sizeof(sall))
+	alignedTpacketHdrSize = tpacketAlign(syscall.SizeofTpacketHdr)
+	alignedTpacketSALLSize = tpacketAlign(packetSALLSize)
+	alignedTpacketAllHdrSize = alignedTpacketHdrSize + alignedTpacketSALLSize
+
 	// set up the socket - remember to switch to network socket order for the protocol int
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
 	if err != nil {
@@ -222,4 +243,37 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		h.ring = data
 	}
 	return &h, nil
+}
+
+func getEndianness() (binary.ByteOrder, error) {
+	buf := [2]byte{}
+	*(*uint16)(unsafe.Pointer(&buf[0])) = uint16(0xABCD)
+
+	switch buf {
+	case [2]byte{0xCD, 0xAB}:
+		return binary.LittleEndian, nil
+	case [2]byte{0xAB, 0xCD}:
+		return binary.BigEndian, nil
+	default:
+		return nil, fmt.Errorf("Could not determine native endianness.")
+	}
+}
+
+// parseSocketAddrLinkLayer parse byte data to get a RawSockAddrLinkLayer
+func parseSocketAddrLinkLayer(b []byte, endian binary.ByteOrder) (*syscall.RawSockaddrLinklayer, error) {
+	if len(b) < int(packetSALLSize) {
+		return nil, fmt.Errorf("bytes of length %d shorter than mandated %d", len(b), packetSALLSize)
+	}
+	var addr [8]byte
+	copy(addr[:], b[11:19])
+	sall := syscall.RawSockaddrLinklayer{
+		Family:   endian.Uint16(b[0:2]),
+		Protocol: endian.Uint16(b[2:4]),
+		Ifindex:  int32(endian.Uint32(b[4:8])),
+		Hatype:   endian.Uint16(b[8:10]),
+		Pkttype:  b[10],
+		Halen:    b[11],
+		Addr:     addr,
+	}
+	return &sall, nil
 }
