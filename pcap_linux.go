@@ -135,7 +135,7 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 	// figure out which block has the next frame in the ring
 	bufferIndex := h.frameIndex / h.framesPerBuffer
 	logger.Debugf("calculated bufferIndex: %d", bufferIndex)
-	bufferIndex = bufferIndex + h.blockSize
+	bufferIndex = bufferIndex * h.blockSize
 	logger.Debugf("re-calculated bufferIndex: %d", bufferIndex)
 
 	// find the the frame within that buffer
@@ -257,6 +257,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 			Frame_size: frameSize,
 			Frame_nr:   frameNumbers,
 		}
+		logger.Debugf("creating mmap buffer with tpreq %#v", tpreq)
 		if err = syscall.SetsockoptTpacketReq(fd, syscall.SOL_PACKET, syscall.PACKET_RX_RING, &tpreq); err != nil {
 			logger.Errorf("failed to set tpacket req: %v", err)
 			return nil, fmt.Errorf("failed to set tpacket req: %v", err)
@@ -268,6 +269,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 			logger.Errorf("error mmapping: %v", err)
 			return nil, fmt.Errorf("error mmapping: %v", err)
 		}
+		logger.Infof("mmap buffer created with size %d", len(data))
 		h.framesPerBuffer = framesPerBuffer
 		h.blockSize = blockSize
 		h.frameSize = frameSize
