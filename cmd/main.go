@@ -44,7 +44,11 @@ var rootCmd = &cobra.Command{
 			}
 			packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
 			for p := range packetSource.Packets() {
-				fmt.Printf("packet size %d, first bytes %#v\n", p.Metadata().CaptureLength, p.Data()[:50])
+				data := p.Data()
+				if len(data) > 50 {
+					data = data[:50]
+				}
+				fmt.Printf("packet size %d, first bytes %#v\n", p.Metadata().CaptureLength, data)
 			}
 		} else {
 			if c, err = pcap.Listen(iface, 65536, true, true, 0); err != nil {
