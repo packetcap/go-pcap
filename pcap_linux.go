@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/google/gopacket"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -49,14 +50,14 @@ type Handle struct {
 	endian          binary.ByteOrder
 }
 
-func (h Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
+func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
 	if h.syscalls {
 		return h.readPacketDataSyscall()
 	}
 	return h.readPacketDataMmap()
 }
 
-func (h Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
+func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	b := make([]byte, h.snaplen)
 	read, _, err := syscall.Recvfrom(h.fd, b, 0)
 	if err != nil {
@@ -72,18 +73,23 @@ func (h Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, e
 	return b, ci, nil
 }
 
-func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
+func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
+	logger := log.WithFields(log.Fields{
+		"func":   "readPacketDataMmap",
+		"method": "mmap",
+	})
+	logger.Debug("started")
 	// we check the bit setting on the pointer
-	if h.pollfd == nil {
-		h.pollfd = []syscall.PollFd{{Fd: int32(h.fd), Events: syscall.POLLIN}}
-	}
+	logger.Debugf("checking for packet at position %d", h.framePtr)
 	if h.ring[h.framePtr]&syscall.TP_STATUS_USER != syscall.TP_STATUS_USER {
 		val, err := syscall.Poll(h.pollfd, -1)
 		if err != nil {
+			logger.Errorf("error polling socket: %v", err)
 			return nil, ci, fmt.Errorf("error polling socket: %v", err)
 		}
 		if val == -1 {
-			return nil, ci, errors.New("negative error polling socket")
+			logger.Error("negative return value from polling socket")
+			return nil, ci, errors.New("negative return value from polling socket")
 		}
 		// socket was ready, so read from the mmap now
 	}
@@ -93,6 +99,7 @@ func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err 
 	hdr := syscall.TpacketHdr{}
 	err = binary.Read(buf, h.endian, &hdr)
 	if err != nil {
+		logger.Errorf("error reading tpacket header: %v", err)
 		return nil, ci, fmt.Errorf("error reading header: %v", err)
 	}
 	// read the sockaddr_ll
@@ -100,7 +107,8 @@ func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err 
 	// so we have to read it manually
 	sall, err := parseSocketAddrLinkLayer(b[alignedTpacketHdrSize:alignedTpacketAllHdrSize], h.endian)
 	if err != nil {
-		return nil, ci, fmt.Errorf("error reading header: %v", err)
+		logger.Errorf("error parsing sockaddr_ll: %v", err)
+		return nil, ci, fmt.Errorf("error parsing sockaddr_ll: %v", err)
 	}
 	// we do not do anything with this for now, because we leave it to the decoder
 	/*
@@ -117,17 +125,25 @@ func (h Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err 
 	data = b[alignedTpacketAllHdrSize : uint32(alignedTpacketAllHdrSize)+hdr.Snaplen]
 
 	// indicate we are done with this frame, send back to the kernel
+	logger.Debugf("returning frame at pos %d to kernel", h.framePtr)
 	h.ring[h.framePtr] = syscall.TP_STATUS_KERNEL
 
 	// Increment frame index, wrapping around if end of buffer is reached.
-	h.frameIndex = h.frameIndex + 1%h.frameNumbers
+	logger.Debugf("original frameIndex: %d", h.frameIndex)
+	h.frameIndex = (h.frameIndex + 1) % h.frameNumbers
+	logger.Debugf("updated frameIndex: %d", h.frameIndex)
 	// figure out which block has the next frame in the ring
 	bufferIndex := h.frameIndex / h.framesPerBuffer
+	logger.Debugf("calculated bufferIndex: %d", bufferIndex)
 	bufferIndex = bufferIndex + h.blockSize
+	logger.Debugf("re-calculated bufferIndex: %d", bufferIndex)
 
 	// find the the frame within that buffer
 	frameIndexDiff := h.frameIndex % h.framesPerBuffer
+	logger.Debugf("frameIndexDiff: %d", frameIndexDiff)
 	h.framePtr = int(bufferIndex + frameIndexDiff*h.frameSize)
+	logger.Debugf("h.frameSize %d, frameIndexDiff %d, frameIndexDiff*h.frameSize %d, bufferIndex %d", h.frameSize, frameIndexDiff, frameIndexDiff*h.frameSize, bufferIndex)
+	logger.Debugf("final framePtr: %d", h.framePtr)
 
 	return data, ci, nil
 }
@@ -147,6 +163,15 @@ func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Durat
 }
 
 func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
+	logger := log.WithFields(log.Fields{
+		"func":        "openLive",
+		"iface":       iface,
+		"snaplen":     snaplen,
+		"promiscuous": promiscuous,
+		"timeout":     timeout,
+		"syscalls":    syscalls,
+	})
+	logger.Debug("started")
 	h := Handle{
 		snaplen:  snaplen,
 		syscalls: syscalls,
@@ -168,13 +193,16 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	// set up the socket - remember to switch to network socket order for the protocol int
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
 	if err != nil {
+		logger.Errorf("failed opening raw socket: %v", err)
 		return nil, fmt.Errorf("failed opening raw socket: %v", err)
 	}
 	h.fd = fd
+	h.pollfd = []syscall.PollFd{{Fd: int32(h.fd), Events: syscall.POLLIN}}
 	if iface != "" {
 		// get our interface
 		in, err := net.InterfaceByName(iface)
 		if err != nil {
+			logger.Errorf("unknown interface %s: %v", iface, err)
 			return nil, fmt.Errorf("unknown interface %s: %v", iface, err)
 		}
 		h.index = in.Index
@@ -195,12 +223,14 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 				Type:    syscall.PACKET_MR_PROMISC,
 			}
 			if err = syscall.SetsockoptPacketMreq(fd, syscall.SOL_PACKET, syscall.PACKET_ADD_MEMBERSHIP, &mreq); err != nil {
+				logger.Errorf("failed to set promiscuous for %s: %v", iface, err)
 				return nil, fmt.Errorf("failed to set promiscuous for %s: %v", iface, err)
 			}
 		}
 	}
 	if !syscalls {
 		if err = syscall.SetsockoptInt(fd, syscall.SOL_PACKET, syscall.PACKET_VERSION, syscall.TPACKET_V1); err != nil {
+			logger.Errorf("failed to set TPACKET_V1: %v", err)
 			return nil, fmt.Errorf("failed to set TPACKET_V1: %v", err)
 		}
 		// set up the ring
@@ -228,12 +258,14 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 			Frame_nr:   frameNumbers,
 		}
 		if err = syscall.SetsockoptTpacketReq(fd, syscall.SOL_PACKET, syscall.PACKET_RX_RING, &tpreq); err != nil {
+			logger.Errorf("failed to set tpacket req: %v", err)
 			return nil, fmt.Errorf("failed to set tpacket req: %v", err)
 		}
 		totalSize := int(tpreq.Block_size * tpreq.Block_nr)
 		var offset int64
 		data, err := syscall.Mmap(fd, offset, totalSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
+			logger.Errorf("error mmapping: %v", err)
 			return nil, fmt.Errorf("error mmapping: %v", err)
 		}
 		h.framesPerBuffer = framesPerBuffer

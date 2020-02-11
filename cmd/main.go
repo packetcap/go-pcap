@@ -2,16 +2,17 @@ package main
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/deitch/pcap"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 var (
 	useGopacket bool
+	debug       bool
 )
 
 func main() {
@@ -32,6 +33,10 @@ var rootCmd = &cobra.Command{
 		if len(args) >= 1 {
 			iface = args[0]
 		}
+		if debug {
+			log.SetLevel(log.DebugLevel)
+		}
+
 		fmt.Printf("capturing from interface %s\n", iface)
 		if useGopacket {
 			if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {
@@ -54,4 +59,5 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().BoolVar(&useGopacket, "gopacket", false, "use gopacket interface instead of simple pcap.Listen")
+	rootCmd.Flags().BoolVar(&debug, "debug", false, "print lots of debugging messages")
 }
