@@ -27,9 +27,9 @@ const (
 )
 
 var (
-	packetSALLSize           int32
+	packetRALLSize           int32
 	alignedTpacketHdrSize    int32
-	alignedTpacketSALLSize   int32
+	alignedTpacketRALLSize   int32
 	alignedTpacketAllHdrSize int32
 )
 
@@ -122,7 +122,9 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 		Timestamp:      time.Unix(int64(hdr.Sec), int64(hdr.Usec*1000)),
 		InterfaceIndex: int(sall.Ifindex),
 	}
-	data = b[alignedTpacketAllHdrSize : uint32(alignedTpacketAllHdrSize)+hdr.Snaplen]
+	data = b[hdr.Mac : uint32(hdr.Mac)+hdr.Snaplen]
+
+	logger.Debugf("raw packet %d\n ", data)
 
 	// indicate we are done with this frame, send back to the kernel
 	logger.Debugf("returning frame at pos %d to kernel", h.framePtr)
@@ -184,11 +186,11 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	h.endian = endianness
 
 	// because syscall package does not provide this
-	sall := syscall.SockaddrLinklayer{}
-	packetSALLSize = int32(unsafe.Sizeof(sall))
+	rall := syscall.RawSockaddrLinklayer{}
+	packetRALLSize = int32(unsafe.Sizeof(rall))
 	alignedTpacketHdrSize = tpacketAlign(syscall.SizeofTpacketHdr)
-	alignedTpacketSALLSize = tpacketAlign(packetSALLSize)
-	alignedTpacketAllHdrSize = alignedTpacketHdrSize + alignedTpacketSALLSize
+	alignedTpacketRALLSize = tpacketAlign(packetRALLSize)
+	alignedTpacketAllHdrSize = alignedTpacketHdrSize + alignedTpacketRALLSize
 
 	// set up the socket - remember to switch to network socket order for the protocol int
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
@@ -295,8 +297,8 @@ func getEndianness() (binary.ByteOrder, error) {
 
 // parseSocketAddrLinkLayer parse byte data to get a RawSockAddrLinkLayer
 func parseSocketAddrLinkLayer(b []byte, endian binary.ByteOrder) (*syscall.RawSockaddrLinklayer, error) {
-	if len(b) < int(packetSALLSize) {
-		return nil, fmt.Errorf("bytes of length %d shorter than mandated %d", len(b), packetSALLSize)
+	if len(b) < int(packetRALLSize) {
+		return nil, fmt.Errorf("bytes of length %d shorter than mandated %d", len(b), packetRALLSize)
 	}
 	var addr [8]byte
 	copy(addr[:], b[11:19])
