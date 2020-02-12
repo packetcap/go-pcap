@@ -1,4 +1,4 @@
-module github.com/deitch/pcap
+module github.com/packetcap/go-pcap
 
 go 1.13
 

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/deitch/pcap"
+	"github.com/packetcap/go-pcap"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	log "github.com/sirupsen/logrus"
