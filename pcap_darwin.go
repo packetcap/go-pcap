@@ -1,6 +1,7 @@
 package pcap
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,17 +17,14 @@ const (
 	enable = 1
 )
 
-var (
-)
-
 type Handle struct {
-	syscalls        bool
-	promiscuous     bool
-	index           int
-	snaplen         int32
-	fd              int
-	buf            []byte
-	endian          binary.ByteOrder
+	syscalls    bool
+	promiscuous bool
+	index       int
+	snaplen     int32
+	fd          int
+	buf         []byte
+	endian      binary.ByteOrder
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
@@ -43,14 +41,24 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading: %v", err)
 	}
+	if read <= 0 {
+		return nil, ci, fmt.Errorf("read no packets")
+	}
+	// separate the header and packet body
+	hdr := syscall.BpfHdr{}
+	buf := bytes.NewBuffer(h.buf[:syscall.SizeofBpfHdr])
+	err = binary.Read(buf, h.endian, &hdr)
+	if err != nil {
+		return nil, ci, fmt.Errorf("error reading bpf header: %v")
+	}
 	// TODO: add CaptureInfo, specifically:
 	//    capture timestamp
-	//    original packet length
 	ci = gopacket.CaptureInfo{
-		CaptureLength:  read,
+		CaptureLength:  int(hdr.Caplen),
+		Length:         int(hdr.Datalen),
 		InterfaceIndex: h.index,
 	}
-	return h.buf[:], ci, nil
+	return h.buf[hdr.Hdrlen : uint32(hdr.Hdrlen)+hdr.Caplen], ci, nil
 }
 
 func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
@@ -70,7 +78,7 @@ func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Durat
 
 func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
 	var (
-		fd int = -1
+		fd  int = -1
 		err error
 	)
 	logger := log.WithFields(log.Fields{
@@ -94,7 +102,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	h.endian = endianness
 
 	// open the bpf device
-	for i := 0; i< 255; i++ {
+	for i := 0; i < 255; i++ {
 		dev := fmt.Sprintf("/dev/bpf%d", i)
 		fd, err = syscall.Open(dev, syscall.O_RDWR, 0000)
 		if fd > -1 {
