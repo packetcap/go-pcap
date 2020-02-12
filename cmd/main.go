@@ -43,12 +43,25 @@ var rootCmd = &cobra.Command{
 				log.Fatal(err)
 			}
 			packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
-			for p := range packetSource.Packets() {
-				data := p.Data()
+			var count int
+			for packet := range packetSource.Packets() {
+				if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
+					fmt.Printf("%d: TCP packet ", count)
+					// Get actual TCP data from this layer
+					tcp, _ := tcpLayer.(*layers.TCP)
+					fmt.Printf("From src port %d to dst port %d\n", tcp.SrcPort, tcp.DstPort)
+				}
+				// Iterate over all layers, printing out each layer type
+				for i, layer := range packet.Layers() {
+					fmt.Printf("%d: PACKET LAYER %d: %s\n", count, i, layer.LayerType())
+				}
+
+				data := packet.Data()
 				if len(data) > 50 {
 					data = data[:50]
 				}
-				fmt.Printf("packet size %d, first bytes %#v\n", p.Metadata().CaptureLength, data)
+				fmt.Printf("%d: packet size %d, first bytes %d\n", count, packet.Metadata().CaptureLength, data)
+				count++
 			}
 		} else {
 			if c, err = pcap.Listen(iface, 65536, true, true, 0); err != nil {
