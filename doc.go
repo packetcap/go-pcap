@@ -9,4 +9,7 @@ package pcap
   For syscall-based capture: see http://www.microhowto.info/howto/capture_ethernet_frames_using_an_af_packet_socket_in_c.html
   For mmap-based capture: see http://www.microhowto.info/howto/capture_ethernet_frames_using_an_af_packet_ring_buffer_in_c.html
 
+ For BPF compilation reference: https://www.freebsd.org/cgi/man.cgi?query=bpf&sektion=4&manpath=FreeBSD+4.7-RELEASE
+  And Linux reference: https://www.kernel.org/doc/Documentation/networking/filter.txt
+
 */
