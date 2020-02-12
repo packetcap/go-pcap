@@ -150,10 +150,6 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 	return data, ci, nil
 }
 
-func htons(in uint16) uint16 {
-	return (in<<8)&0xff00 | in>>8
-}
-
 func tpacketAlign(base int32) int32 {
 	return (base + syscall.TPACKET_ALIGNMENT - 1) &^ (syscall.TPACKET_ALIGNMENT - 1)
 }
@@ -279,20 +275,6 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		h.ring = data
 	}
 	return &h, nil
-}
-
-func getEndianness() (binary.ByteOrder, error) {
-	buf := [2]byte{}
-	*(*uint16)(unsafe.Pointer(&buf[0])) = uint16(0xABCD)
-
-	switch buf {
-	case [2]byte{0xCD, 0xAB}:
-		return binary.LittleEndian, nil
-	case [2]byte{0xAB, 0xCD}:
-		return binary.BigEndian, nil
-	default:
-		return nil, fmt.Errorf("Could not determine native endianness.")
-	}
 }
 
 // parseSocketAddrLinkLayer parse byte data to get a RawSockAddrLinkLayer
