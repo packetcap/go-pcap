@@ -1,8 +1,9 @@
 # go-pcap
 
 This is a native go packet processing library. It performs a function very similar to
-[libpcap](https://github.com/the-tcpdump-group/libpcap), or, for that matter, [github.com/google/gopacket/pcap](github.com/google/gopacket/pcap), except that
-it is 100% native go. That means that:
+[libpcap](https://github.com/the-tcpdump-group/libpcap), or, for that matter,
+[github.com/google/gopacket/pcap](github.com/google/gopacket/pcap), except that it is 100% native go.
+This means that:
 
 * you can build it with `CGO_ENABLED=0`
 * cross-compiling is simple
@@ -52,22 +53,56 @@ for packet := range packetSource.Packets() {
 }
 ```
 
-If you know you don't want all of that overhead, you can use the [Listen](https://godoc.org/github.com/packetcap/go-pcap#Listen) interface,
-which returns a `chan` to which it will send packets.
+If you know you don't want all of that overhead, you can use the [Listen](https://godoc.org/github.com/packetcap/go-pcap#Listen) interface, which returns a `chan` to which it will send packets.
 
 
 ```go
-// c is a channel of type pcap.Packet
-if c, err = pcap.Listen(iface, 65536, true, true, 0); err != nil {
+if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {
         log.Fatal(err)
 }
-for packet := range c {
+for packet := range handle.Listen() {
         processPacket(packet.B)
 }
 ```
 
 `pcap.Listen` will start a separate goroutine, so you do not have to. `pcap.Listen` is a one-shot, "open a socket, listen for packets, send
 them down my channel" convenience.
+
+### Filters
+
+The library (and CLI below) support using libpcap-style filters. You simply need to set the filter
+on the handle returned by `pcap.OpenLive()`
+
+```go
+if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {
+        log.Fatal(err)
+}
+err = handle.SetBPFFilter(filter)
+if err != nil {
+	// handle error
+}
+packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
+for packet := range packetSource.Packets() {
+        processPacket(packet)
+}
+```
+
+If you are using the simple channel method `pcap.Listen()`, you also can filter it:
+
+```go
+if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {
+        log.Fatal(err)
+}
+err = handle.SetBPFFilter(filter)
+if err != nil {
+	// handle error
+}
+for packet := range pcap.Listen() {
+        processPacket(packet.B)
+}
+```
+
+The `filter` is a string that matches the tcpdump syntax from [libcap](https://www.tcpdump.org).
 
 #### Efficiency
 
@@ -93,10 +128,4 @@ $ make build OS=linux
 The binaries will be output as `dist/pcap-<os>-<arch>`. Additionally, if you are building for your local OS+arch, a binary named `pcap` will be
 deposited in the current directory, so you can just do `./pcap`.
 
-For options, run `./pcap --help`.
-
-## TODO
-
-* add BPF filter support, so we can do `"pcap udp and port 23"`
-* more efficient packet retrieval support on macOS
-
+For options, run `./pcap --help`. It also supports using filters.

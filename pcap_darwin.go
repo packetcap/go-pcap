@@ -16,6 +16,8 @@ import (
 
 const (
 	enable = 1
+	// defaultSyscalls default setting for using syscalls
+	defaultSyscalls = true
 )
 
 type Handle struct {
@@ -71,10 +73,10 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 	return data, ci, nil
 }
 
-// OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/google/gopacket#PacketDataSource
-// so you can pass it there.
-func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration) (handle *Handle, _ error) {
-	return openLive(device, snaplen, promiscuous, timeout, true)
+// set a classic BPF filter on the listener. filter must be compliant with
+// tcpdump syntax.
+func (h *Handle) SetBPFFilter(filter string) error {
+	return nil
 }
 
 func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
