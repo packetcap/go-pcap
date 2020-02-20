@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/packetcap/go-pcap"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/packetcap/go-pcap"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )

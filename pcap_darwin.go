@@ -5,9 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	syscall "golang.org/x/sys/unix"
 	"time"
 	"unsafe"
+
+	syscall "golang.org/x/sys/unix"
 
 	"github.com/google/gopacket"
 	log "github.com/sirupsen/logrus"
@@ -36,7 +37,7 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	// must memset the buffer
-	h.buf = make([]byte, len(h.buf), len(h.buf))
+	h.buf = make([]byte, len(h.buf))
 	read, err := syscall.Read(h.fd, h.buf)
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading: %v", err)
@@ -49,7 +50,7 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	buf := bytes.NewBuffer(h.buf[:syscall.SizeofBpfHdr])
 	err = binary.Read(buf, h.endian, &hdr)
 	if err != nil {
-		return nil, ci, fmt.Errorf("error reading bpf header: %v")
+		return nil, ci, fmt.Errorf("error reading bpf header: %v", err)
 	}
 	// TODO: add CaptureInfo, specifically:
 	//    capture timestamp

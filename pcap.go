@@ -2,6 +2,7 @@ package pcap
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 	"unsafe"
@@ -46,7 +47,7 @@ func getEndianness() (binary.ByteOrder, error) {
 	case [2]byte{0xAB, 0xCD}:
 		return binary.BigEndian, nil
 	default:
-		return nil, fmt.Errorf("Could not determine native endianness.")
+		return nil, errors.New("could not determine native endianness")
 	}
 }
 
