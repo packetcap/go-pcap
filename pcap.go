@@ -3,10 +3,14 @@ package pcap
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 	"unsafe"
 
 	"github.com/google/gopacket"
+	"github.com/packetcap/go-pcap/filter"
+	"golang.org/x/net/bpf"
 )
 
 // Packet a single packet returned by a listen call
@@ -14,6 +18,11 @@ type Packet struct {
 	B     []byte
 	Info  gopacket.CaptureInfo
 	Error error
+}
+
+type BpfProgram struct {
+	Len    uint16
+	Filter *bpf.RawInstruction
 }
 
 // OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/google/gopacket#PacketDataSource
@@ -36,6 +45,31 @@ func (h Handle) Listen() chan Packet {
 		}
 	}()
 	return c
+}
+
+// set a classic BPF filter on the listener. filter must be compliant with
+// tcpdump syntax.
+func (h *Handle) SetBPFFilter(expr string) error {
+	expr2 := strings.TrimSpace(expr)
+	// empty strings are not of interest
+	if expr2 == "" {
+		return nil
+	}
+	e := filter.NewExpression(expr2)
+	if e == nil {
+		return fmt.Errorf("no expression received for filter '%s'", expr)
+	}
+	f := e.Compile()
+	instructions, err := f.Compile()
+	if err != nil {
+		return fmt.Errorf("failed to compile filter into instructions: %v", err)
+	}
+	raw, err := bpf.Assemble(instructions)
+	if err != nil {
+		return fmt.Errorf("bpf assembly failed: %v", err)
+	}
+	h.filter = raw
+	return h.setFilter()
 }
 
 // getEndianness discover the endianness of our current system

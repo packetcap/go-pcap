@@ -8,6 +8,7 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/net/bpf"
 	syscall "golang.org/x/sys/unix"
 
 	"github.com/google/gopacket"
@@ -28,6 +29,7 @@ type Handle struct {
 	fd          int
 	buf         []byte
 	endian      binary.ByteOrder
+	filter      []bpf.RawInstruction
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
@@ -75,7 +77,18 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 
 // set a classic BPF filter on the listener. filter must be compliant with
 // tcpdump syntax.
-func (h *Handle) SetBPFFilter(filter string) error {
+func (h *Handle) setFilter() error {
+	/*
+	 * Try to install the kernel filter.
+	 */
+	prog := BpfProgram{
+		Len:    uint16(len(h.filter)),
+		Filter: (*bpf.RawInstruction)(unsafe.Pointer(&h.filter[0])),
+	}
+	if err := ioctlPtr(h.fd, syscall.BIOCSETF, unsafe.Pointer(&prog)); err != nil {
+		return fmt.Errorf("unable to set filter: %v", err)
+	}
+
 	return nil
 }
 
@@ -138,7 +151,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	if err != nil {
 		return nil, fmt.Errorf("failed to read buffer length: %v", err)
 	}
-	h.buf = make([]byte, size, size)
+	h.buf = make([]byte, size)
 
 	return &h, nil
 }

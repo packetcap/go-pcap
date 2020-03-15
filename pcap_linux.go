@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 	"unsafe"
 
@@ -14,7 +13,6 @@ import (
 	syscall "golang.org/x/sys/unix"
 
 	"github.com/google/gopacket"
-	"github.com/packetcap/go-pcap/filter"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -159,36 +157,17 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 
 // set a classic BPF filter on the listener. filter must be compliant with
 // tcpdump syntax.
-func (h *Handle) SetBPFFilter(expr string) error {
-	expr2 := strings.TrimSpace(expr)
-	// empty strings are not of interest
-	if expr2 == "" {
-		return nil
-	}
-	e := filter.NewExpression(expr2)
-	if e == nil {
-		return fmt.Errorf("no expression received for filter '%s'", expr)
-	}
-	f := e.Compile()
-	instructions, err := f.Compile()
-	if err != nil {
-		return fmt.Errorf("failed to compile filter into instructions: %v", err)
-	}
-	raw, err := bpf.Assemble(instructions)
-	if err != nil {
-		return fmt.Errorf("bpf assembly failed: %v", err)
-	}
-	h.filter = raw
+func (h *Handle) setFilter() error {
 
 	/*
 	 * Try to install the kernel filter.
 	 */
 	prog := syscall.SockFprog{
-		Len:    uint16(len(raw)),
-		Filter: (*syscall.SockFilter)(unsafe.Pointer(&raw[0])),
+		Len:    uint16(len(h.filter)),
+		Filter: (*syscall.SockFilter)(unsafe.Pointer(&h.filter[0])),
 	}
 
-	if err != syscall.SetsockoptSockFprog(h.fd, syscall.SOL_SOCKET, syscall.SO_ATTACH_FILTER, &prog) {
+	if err := syscall.SetsockoptSockFprog(h.fd, syscall.SOL_SOCKET, syscall.SO_ATTACH_FILTER, &prog); err != nil {
 		return fmt.Errorf("unable to set filter: %v", err)
 	}
 	return nil
