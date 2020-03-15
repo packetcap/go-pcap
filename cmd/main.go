@@ -14,6 +14,7 @@ import (
 var (
 	useGopacket bool
 	debug       bool
+	iface       string
 )
 
 func main() {
@@ -26,17 +27,13 @@ var rootCmd = &cobra.Command{
 	Long:  `Capture packets for all interfaces (default) or a given interface, when passed as first argument`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var (
-			iface  string
 			err    error
 			handle *pcap.Handle
 			count  int
 			filter string
 		)
 		if len(args) >= 1 {
-			iface = args[0]
-		}
-		if len(args) >= 2 {
-			filter = strings.Join(args[1:], " ")
+			filter = strings.Join(args, " ")
 		}
 		if debug {
 			log.SetLevel(log.DebugLevel)
@@ -67,6 +64,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.Flags().BoolVar(&useGopacket, "gopacket", false, "use gopacket interface instead of simple pcap.Listen")
 	rootCmd.Flags().BoolVar(&debug, "debug", false, "print lots of debugging messages")
+	rootCmd.Flags().StringVarP(&iface, "interface", "i", "", "interface from which to capture, default to all")
 }
 
 func processPacket(packet gopacket.Packet, count int) {
