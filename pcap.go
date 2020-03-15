@@ -3,25 +3,27 @@ package pcap
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"time"
 	"unsafe"
 
 	"github.com/google/gopacket"
 )
 
+// Packet a single packet returned by a listen call
 type Packet struct {
 	B     []byte
 	Info  gopacket.CaptureInfo
 	Error error
 }
 
-// Listen simple one-step command to open, listen and send packets over a returned channel
-func Listen(iface string, snaplen int32, promiscuous, syscalls bool, timeout time.Duration) (chan Packet, error) {
-	h, err := openLive(iface, snaplen, promiscuous, timeout, syscalls)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open interface for listening: %v", err)
-	}
+// OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/google/gopacket#PacketDataSource
+// so you can pass it there.
+func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration) (handle *Handle, _ error) {
+	return openLive(device, snaplen, promiscuous, timeout, defaultSyscalls)
+}
+
+// Listen simple one-step command to listen and send packets over a returned channel
+func (h Handle) Listen() chan Packet {
 	c := make(chan Packet, 50)
 	go func() {
 		for {
@@ -33,7 +35,7 @@ func Listen(iface string, snaplen int32, promiscuous, syscalls bool, timeout tim
 			}
 		}
 	}()
-	return c, nil
+	return c
 }
 
 // getEndianness discover the endianness of our current system

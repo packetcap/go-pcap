@@ -5,12 +5,16 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	syscall "golang.org/x/sys/unix"
 	"net"
+	"strings"
 	"time"
 	"unsafe"
 
+	"golang.org/x/net/bpf"
+	syscall "golang.org/x/sys/unix"
+
 	"github.com/google/gopacket"
+	"github.com/packetcap/go-pcap/filter"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -24,6 +28,8 @@ const (
 	//defaultFramesPerBlock = defaultBlockSize / defaultFrameSize
 	defaultFramesPerBlock = 32
 	EthHlen               = 0x10
+	// defaultSyscalls default setting for using syscalls
+	defaultSyscalls = false
 )
 
 var (
@@ -48,6 +54,7 @@ type Handle struct {
 	blockSize       uint32
 	pollfd          []syscall.PollFd
 	endian          binary.ByteOrder
+	filter          []bpf.RawInstruction
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
@@ -150,14 +157,45 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 	return data, ci, nil
 }
 
-func tpacketAlign(base int32) int32 {
-	return (base + syscall.TPACKET_ALIGNMENT - 1) &^ (syscall.TPACKET_ALIGNMENT - 1)
+// set a classic BPF filter on the listener. filter must be compliant with
+// tcpdump syntax.
+func (h *Handle) SetBPFFilter(expr string) error {
+	expr2 := strings.TrimSpace(expr)
+	// empty strings are not of interest
+	if expr2 == "" {
+		return nil
+	}
+	e := filter.NewExpression(expr2)
+	if e == nil {
+		return fmt.Errorf("no expression received for filter '%s'", expr)
+	}
+	f := e.Compile()
+	instructions, err := f.Compile()
+	if err != nil {
+		return fmt.Errorf("failed to compile filter into instructions: %v", err)
+	}
+	raw, err := bpf.Assemble(instructions)
+	if err != nil {
+		return fmt.Errorf("bpf assembly failed: %v", err)
+	}
+	h.filter = raw
+
+	/*
+	 * Try to install the kernel filter.
+	 */
+	prog := syscall.SockFprog{
+		Len:    uint16(len(raw)),
+		Filter: (*syscall.SockFilter)(unsafe.Pointer(&raw[0])),
+	}
+
+	if err != syscall.SetsockoptSockFprog(h.fd, syscall.SOL_SOCKET, syscall.SO_ATTACH_FILTER, &prog) {
+		return fmt.Errorf("unable to set filter: %v", err)
+	}
+	return nil
 }
 
-// OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/google/gopacket#PacketDataSource
-// so you can pass it there.
-func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration) (handle *Handle, _ error) {
-	return openLive(device, snaplen, promiscuous, timeout, false)
+func tpacketAlign(base int32) int32 {
+	return (base + syscall.TPACKET_ALIGNMENT - 1) &^ (syscall.TPACKET_ALIGNMENT - 1)
 }
 
 func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {

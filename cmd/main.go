@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -27,32 +28,35 @@ var rootCmd = &cobra.Command{
 		var (
 			iface  string
 			err    error
-			c      chan pcap.Packet
 			handle *pcap.Handle
 			count  int
+			filter string
 		)
 		if len(args) >= 1 {
 			iface = args[0]
+		}
+		if len(args) >= 2 {
+			filter = strings.Join(args[1:], " ")
 		}
 		if debug {
 			log.SetLevel(log.DebugLevel)
 		}
 
 		fmt.Printf("capturing from interface %s\n", iface)
+		if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {
+			log.Fatal(err)
+		}
+		if err := handle.SetBPFFilter(filter); err != nil {
+			log.Fatalf("unexpected error setting filter: %v", err)
+		}
 		if useGopacket {
-			if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {
-				log.Fatal(err)
-			}
 			packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
 			for packet := range packetSource.Packets() {
 				processPacket(packet, count)
 				count++
 			}
 		} else {
-			if c, err = pcap.Listen(iface, 65536, true, true, 0); err != nil {
-				log.Fatal(err)
-			}
-			for packet := range c {
+			for packet := range handle.Listen() {
 				processPacket(gopacket.NewPacket(packet.B, layers.LayerTypeEthernet, gopacket.Default), count)
 				count++
 			}
