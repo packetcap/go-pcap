@@ -46,7 +46,7 @@ build: $(LOCALBIN) $(BIN)
 $(LOCALBIN): $(BINDIR)
 	CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o $@ ./cmd
 $(BIN):
-	@if [ "$(OS)" = "$(BUILDOS)" -a "$(ARCH)" = "$(BUILDARCH)" ]; then ln -s $(LOCALBIN) $@; fi
+	@if [ "$(OS)" = "$(BUILDOS)" -a "$(ARCH)" = "$(BUILDARCH)" -a ! -e "$@" ]; then ln -s $(LOCALBIN) $@; fi
 
 install: $(INSTALLBIN)
 $(INSTALLBIN):
@@ -80,4 +80,3 @@ lint: golint golangci-lint
 
 test:
 	go test ./...
-
