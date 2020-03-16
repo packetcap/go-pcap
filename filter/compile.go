@@ -59,12 +59,12 @@ func compareProtocolRarp(skipTrue, skipFalse uint8) bpf.Instruction {
 	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: etherTypeRarp, SkipFalse: skipFalse, SkipTrue: skipTrue}
 }
 
-func compareSubProtocolTcp(skipTrue, skipFalse uint8) bpf.Instruction {
-	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: ipProtocolTcp, SkipFalse: skipFalse, SkipTrue: skipTrue}
+func compareSubProtocolTCP(skipTrue, skipFalse uint8) bpf.Instruction {
+	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: ipProtocolTCP, SkipFalse: skipFalse, SkipTrue: skipTrue}
 }
 
-func compareSubProtocolUdp(skipTrue, skipFalse uint8) bpf.Instruction {
-	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: ipProtocolUdp, SkipFalse: skipFalse, SkipTrue: skipTrue}
+func compareSubProtocolUDP(skipTrue, skipFalse uint8) bpf.Instruction {
+	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: ipProtocolUDP, SkipFalse: skipFalse, SkipTrue: skipTrue}
 }
 
 func compareSubProtocolSctp(skipTrue, skipFalse uint8) bpf.Instruction {

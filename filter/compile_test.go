@@ -148,8 +148,8 @@ func TestExpressionNextPrimitive(t *testing.T) {
 		{"ip proto tcp", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionUnset,
-			protocol:    filterProtocolIp,
-			subProtocol: filterSubProtocolTcp,
+			protocol:    filterProtocolIP,
+			subProtocol: filterSubProtocolTCP,
 			id:          "",
 		}},
 	}

@@ -10,8 +10,8 @@ const (
 	etherTypeArp               uint32 = 0x806
 	etherTypeRarp              uint32 = 0x8035
 	jumpMask                   uint32 = 0x1fff
-	ipProtocolTcp              uint32 = 0x06
-	ipProtocolUdp              uint32 = 0x11
+	ipProtocolTCP              uint32 = 0x06
+	ipProtocolUDP              uint32 = 0x11
 	ipProtocolSctp             uint32 = 0x84
 	ip6SourcePort              uint32 = 54
 	ip6DestinationPort         uint32 = 56
@@ -77,8 +77,8 @@ const (
 	filterProtocolFddi
 	filterProtocolTr
 	filterProtocolWlan
-	filterProtocolIp
-	filterProtocolIp6
+	filterProtocolIP
+	filterProtocolIP6
 	filterProtocolArp
 	filterProtocolRarp
 	filterProtocolDecnet
@@ -89,8 +89,8 @@ var protocols = map[string]filterProtocol{
 	"fddi":    filterProtocolFddi,
 	"tr":      filterProtocolTr,
 	"wlan":    filterProtocolWlan,
-	"ip":      filterProtocolIp,
-	"ip6":     filterProtocolIp6,
+	"ip":      filterProtocolIP,
+	"ip6":     filterProtocolIP6,
 	"arp":     filterProtocolArp,
 	"rarp":    filterProtocolRarp,
 	"decnett": filterProtocolDecnet,
@@ -100,8 +100,8 @@ type filterSubProtocol int
 
 const (
 	filterSubProtocolUnset filterSubProtocol = iota
-	filterSubProtocolIp
-	filterSubProtocolIp6
+	filterSubProtocolIP
+	filterSubProtocolIP6
 	filterSubProtocolArp
 	filterSubProtocolRarp
 	filterSubProtocolAtalk
@@ -113,7 +113,7 @@ const (
 	filterSubProtocolMoprc
 	filterSubProtocolIso
 	filterSubProtocolStp
-	filterSubProtocolIpx
+	filterSubProtocolIPx
 	filterSubProtocolNetbeui
 	filterSubProtocolIcmp
 	filterSubProtocolIcmp6
@@ -123,14 +123,14 @@ const (
 	filterSubProtocolAh
 	filterSubProtocolEsp
 	filterSubProtocolVrrp
-	filterSubProtocolUdp
-	filterSubProtocolTcp
+	filterSubProtocolUDP
+	filterSubProtocolTCP
 	filterSubProtocolUnknown
 )
 
 var subProtocols = map[string]filterSubProtocol{
-	"ip":      filterSubProtocolIp,
-	"ip6":     filterSubProtocolIp6,
+	"ip":      filterSubProtocolIP,
+	"ip6":     filterSubProtocolIP6,
 	"arp":     filterSubProtocolArp,
 	"rarp":    filterSubProtocolRarp,
 	"atalk":   filterSubProtocolAtalk,
@@ -142,7 +142,7 @@ var subProtocols = map[string]filterSubProtocol{
 	"morpc":   filterSubProtocolMoprc,
 	"iso":     filterSubProtocolIso,
 	"stp":     filterSubProtocolStp,
-	"ipx":     filterSubProtocolIpx,
+	"ipx":     filterSubProtocolIPx,
 	"netbeui": filterSubProtocolNetbeui,
 	"icmp":    filterSubProtocolIcmp,
 	"icmp6":   filterSubProtocolIcmp6,
@@ -152,6 +152,6 @@ var subProtocols = map[string]filterSubProtocol{
 	"ah":      filterSubProtocolAh,
 	"esp":     filterSubProtocolEsp,
 	"vrrp":    filterSubProtocolVrrp,
-	"udp":     filterSubProtocolUdp,
-	"tcp":     filterSubProtocolTcp,
+	"udp":     filterSubProtocolUDP,
+	"tcp":     filterSubProtocolTCP,
 }
