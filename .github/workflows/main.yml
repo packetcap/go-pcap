@@ -1,0 +1,31 @@
+name: Continuous Integration
+on:
+ pull_request:
+   types: [opened, synchronize, reopened]
+ push:
+   branches:
+     - master
+
+jobs:
+  report:
+    name: Report
+    runs-on: ubuntu-latest
+    steps:
+    - name: ref
+      run: echo ${{ github.ref }}
+    - name: event_name
+      run: echo ${{ github.event_name }}
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin]
+    steps:
+    - name: checkout
+      uses: actions/checkout@v1
+    - uses: actions/setup-go@v1
+      with:
+        go-version: '1.13.7'
+    - name: ci
+      run: make fmt-check vet lint test OS=${{ matrix.os }}
