@@ -92,7 +92,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"ip host 10.100.100.100", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
-			protocol:  filterProtocolIp,
+			protocol:  filterProtocolIP,
 			id:        "10.100.100.100",
 		}, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
@@ -267,7 +267,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"ip6 host 2a00:1450:4001:824::2004", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
-			protocol:  filterProtocolIp6,
+			protocol:  filterProtocolIP6,
 			id:        "2a00:1450:4001:824::2004",
 		}, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
@@ -1049,7 +1049,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"ip net 192.168.0.0", primitive{
 			kind:      filterKindNet,
 			direction: filterDirectionSrcOrDst,
-			protocol:  filterProtocolIp,
+			protocol:  filterProtocolIP,
 			id:        "192.168.0.0",
 		}, nil, []bpf.Instruction{
 			// get ethernet protocol
@@ -1338,7 +1338,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"ip6 net 2a00:1450:4001:824::", primitive{
 			kind:      filterKindNet,
 			direction: filterDirectionSrcOrDst,
-			protocol:  filterProtocolIp6,
+			protocol:  filterProtocolIP6,
 			id:        "2a00:1450:4001:824::",
 		}, nil, []bpf.Instruction{
 			// get ethernet protocol
@@ -1728,7 +1728,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
 			protocol:    filterProtocolEther,
-			subProtocol: filterSubProtocolIp,
+			subProtocol: filterSubProtocolIP,
 		}, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
@@ -1746,7 +1746,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
 			protocol:    filterProtocolEther,
-			subProtocol: filterSubProtocolIp6,
+			subProtocol: filterSubProtocolIP6,
 		}, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
@@ -1801,7 +1801,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"ip proto abc", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
-			protocol:    filterProtocolIp,
+			protocol:    filterProtocolIP,
 			subProtocol: filterSubProtocolUnknown,
 			id:          "abc",
 		}, fmt.Errorf("unknown protocol %s", "abc"), nil, ""},
@@ -1809,8 +1809,8 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"ip proto tcp", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
-			protocol:    filterProtocolIp,
-			subProtocol: filterSubProtocolTcp,
+			protocol:    filterProtocolIP,
+			subProtocol: filterSubProtocolTCP,
 			id:          "",
 		}, nil, []bpf.Instruction{
 			// get ethernet protocol
@@ -1832,8 +1832,8 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"ip proto udp", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
-			protocol:    filterProtocolIp,
-			subProtocol: filterSubProtocolUdp,
+			protocol:    filterProtocolIP,
+			subProtocol: filterSubProtocolUDP,
 			id:          "",
 		}, nil, []bpf.Instruction{
 			// get ethernet protocol
@@ -1849,8 +1849,8 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"udp", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
-			protocol:    filterProtocolIp,
-			subProtocol: filterSubProtocolUdp,
+			protocol:    filterProtocolIP,
+			subProtocol: filterSubProtocolUDP,
 			id:          "",
 		}, nil, []bpf.Instruction{
 			// get ethernet protocol
@@ -1877,8 +1877,8 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 				primitive{
 					kind:        filterKindUnset,
 					direction:   filterDirectionSrcOrDst,
-					protocol:    filterProtocolIp,
-					subProtocol: filterSubProtocolUdp,
+					protocol:    filterProtocolIP,
+					subProtocol: filterSubProtocolUDP,
 					id:          "",
 				},
 				primitive{
@@ -1912,22 +1912,22 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 				primitive{
 					kind:        filterKindPort,
 					direction:   filterDirectionDst,
-					protocol:    filterProtocolIp,
-					subProtocol: filterSubProtocolTcp,
+					protocol:    filterProtocolIP,
+					subProtocol: filterSubProtocolTCP,
 					id:          "ftp",
 				},
 				primitive{
 					kind:        filterKindPort,
 					direction:   filterDirectionDst,
-					protocol:    filterProtocolIp,
-					subProtocol: filterSubProtocolTcp,
+					protocol:    filterProtocolIP,
+					subProtocol: filterSubProtocolTCP,
 					id:          "ftp-data",
 				},
 				primitive{
 					kind:        filterKindPort,
 					direction:   filterDirectionDst,
-					protocol:    filterProtocolIp,
-					subProtocol: filterSubProtocolTcp,
+					protocol:    filterProtocolIP,
+					subProtocol: filterSubProtocolTCP,
 					id:          "domain",
 				},
 			},

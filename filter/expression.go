@@ -23,7 +23,7 @@ func (e *Expression) Compile() Filter {
 	var combo composite
 
 	for {
-		var fe filterElement
+		var fe Element
 		if fe = e.Next(); fe == nil {
 			break
 		}
@@ -55,7 +55,7 @@ func (e *Expression) HasNext() bool {
 }
 
 // Next get the next primitive. If none left, return nil.
-func (e *Expression) Next() filterElement {
+func (e *Expression) Next() Element {
 	if !e.HasNext() {
 		return nil
 	}
@@ -164,11 +164,11 @@ func setPrimitiveDefaults(p, lastPrimitive *primitive) {
 		p.subProtocol = lastPrimitive.subProtocol
 	}
 	// special cases
-	if (p.subProtocol == filterSubProtocolUdp || p.subProtocol == filterSubProtocolTcp || p.subProtocol == filterSubProtocolIcmp) && p.protocol == filterProtocolUnset {
-		p.protocol = filterProtocolIp
+	if (p.subProtocol == filterSubProtocolUDP || p.subProtocol == filterSubProtocolTCP || p.subProtocol == filterSubProtocolIcmp) && p.protocol == filterProtocolUnset {
+		p.protocol = filterProtocolIP
 	}
 
-	if p.kind == filterKindUnset && p.direction != filterDirectionUnset && (p.protocol == filterProtocolEther || p.protocol == filterProtocolIp || p.protocol == filterProtocolIp6 || p.protocol == filterProtocolArp || p.protocol == filterProtocolRarp) {
+	if p.kind == filterKindUnset && p.direction != filterDirectionUnset && (p.protocol == filterProtocolEther || p.protocol == filterProtocolIP || p.protocol == filterProtocolIP6 || p.protocol == filterProtocolArp || p.protocol == filterProtocolRarp) {
 		p.kind = filterKindHost
 	}
 	if p.direction == filterDirectionUnset {

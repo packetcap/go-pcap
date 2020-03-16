@@ -11,6 +11,6 @@ type Filter interface {
 	Size() uint8
 }
 
-type filterElement interface {
+type Element interface {
 	IsPrimitive() bool
 }
