@@ -166,11 +166,11 @@ func TestExpressionNextPrimitive(t *testing.T) {
 func TestExpressionCompile(t *testing.T) {
 	for k, v := range testCasesExpressionFilterInstructions {
 		t.Run(k, func(t *testing.T) {
-			for _, tt := range v {
+			for i, tt := range v {
 				e := NewExpression(tt.expression)
 				f := e.Compile()
 				if !f.Equal(tt.filter) {
-					t.Errorf("%s: mismatched value\nactual   %#v\nexpected %#v", tt.expression, f, tt.filter)
+					t.Errorf("%d '%s': mismatched value\nactual   %#v\nexpected %#v", i, tt.expression, f, tt.filter)
 				}
 			}
 		})

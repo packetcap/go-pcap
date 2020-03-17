@@ -21,6 +21,7 @@ const (
 	ip4HeaderFlags             uint32 = 20
 	ip6SourceAddressStart      uint32 = 22
 	ip6DestinationAddressStart uint32 = 38
+	ip6ContinuationPacket      uint32 = 0x2c
 )
 
 type filterKind int

@@ -164,9 +164,9 @@ func setPrimitiveDefaults(p, lastPrimitive *primitive) {
 		p.subProtocol = lastPrimitive.subProtocol
 	}
 	// special cases
-	if (p.subProtocol == filterSubProtocolUDP || p.subProtocol == filterSubProtocolTCP || p.subProtocol == filterSubProtocolIcmp) && p.protocol == filterProtocolUnset {
-		p.protocol = filterProtocolIP
-	}
+	//if (p.subProtocol == filterSubProtocolUDP || p.subProtocol == filterSubProtocolTCP || p.subProtocol == filterSubProtocolIcmp) && p.protocol == filterProtocolUnset {
+	//p.protocol = filterProtocolIP
+	//}
 
 	if p.kind == filterKindUnset && p.direction != filterDirectionUnset && (p.protocol == filterProtocolEther || p.protocol == filterProtocolIP || p.protocol == filterProtocolIP6 || p.protocol == filterProtocolArp || p.protocol == filterProtocolRarp) {
 		p.kind = filterKindHost
@@ -174,7 +174,7 @@ func setPrimitiveDefaults(p, lastPrimitive *primitive) {
 	if p.direction == filterDirectionUnset {
 		p.direction = filterDirectionSrcOrDst
 	}
-	if p.kind == filterKindUnset && p.protocol == filterProtocolUnset {
+	if p.kind == filterKindUnset && p.protocol == filterProtocolUnset && p.subProtocol == filterSubProtocolUnset {
 		p.kind = filterKindHost
 	}
 }

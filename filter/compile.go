@@ -29,6 +29,7 @@ var (
 	loadArpTargetAddress         = bpf.LoadAbsolute{Off: 38, Size: lengthWord}
 	loadIPv4Protocol             = bpf.LoadAbsolute{Off: 23, Size: lengthByte}
 	loadIPv6Protocol             = bpf.LoadAbsolute{Off: 20, Size: lengthByte}
+	loadIPv6ContinuationProtocol = bpf.LoadAbsolute{Off: 54, Size: lengthByte}
 	loadEthernetSourceFirst      = bpf.LoadAbsolute{Off: 6, Size: lengthHalf}
 	loadEthernetSourceLast       = bpf.LoadAbsolute{Off: 8, Size: lengthWord}
 	loadEthernetDestinationFirst = bpf.LoadAbsolute{Off: 0, Size: lengthHalf}
@@ -69,6 +70,37 @@ func compareSubProtocolUDP(skipTrue, skipFalse uint8) bpf.Instruction {
 
 func compareSubProtocolSctp(skipTrue, skipFalse uint8) bpf.Instruction {
 	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: ipProtocolSctp, SkipFalse: skipFalse, SkipTrue: skipTrue}
+}
+
+func compareIPv6Protocol(proto uint32, skipTrue, skipFalse uint8) []bpf.Instruction {
+	st, sf := skipTrue, skipFalse
+	if st == 0 {
+		st = 4
+	}
+	if sf == 0 {
+		sf = 4
+	}
+	return []bpf.Instruction{
+		loadIPv6Protocol,
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: 0, SkipTrue: st - 1},
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ip6ContinuationPacket, SkipFalse: sf - 2},
+		loadIPv6ContinuationProtocol,
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: sf - 4, SkipTrue: st - 4},
+	}
+}
+
+func compareIPv4Protocol(proto uint32, skipTrue, skipFalse uint8) []bpf.Instruction {
+	st, sf := skipTrue, skipFalse
+	if st == 0 {
+		st = 1
+	}
+	if sf == 0 {
+		sf = 1
+	}
+	return []bpf.Instruction{
+		loadIPv4Protocol,
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: sf - 1, SkipTrue: st - 1},
+	}
 }
 
 // checkEtherAddresses add steps to check Ethernet addresses
