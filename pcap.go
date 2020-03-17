@@ -72,6 +72,12 @@ func (h *Handle) SetBPFFilter(expr string) error {
 	return h.setFilter()
 }
 
+// LinkType return the link type, compliant with pcap-linktype(7) and http://www.tcpdump.org/linktypes.html.
+// For now, we just support Ethernet; some day we may support more
+func (h Handle) LinkType() uint8 {
+	return LinkTypeEthernet
+}
+
 // getEndianness discover the endianness of our current system
 func getEndianness() (binary.ByteOrder, error) {
 	buf := [2]byte{}

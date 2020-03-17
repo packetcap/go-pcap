@@ -47,7 +47,7 @@ var rootCmd = &cobra.Command{
 			log.Fatalf("unexpected error setting filter: %v", err)
 		}
 		if useGopacket {
-			packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
+			packetSource := gopacket.NewPacketSource(handle, layers.LinkType(handle.LinkType()))
 			for packet := range packetSource.Packets() {
 				processPacket(packet, count)
 				count++
