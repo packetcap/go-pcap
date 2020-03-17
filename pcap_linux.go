@@ -155,6 +155,15 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 	return data, ci, nil
 }
 
+// Close close sockets and release resources
+func (h *Handle) Close() {
+	// close the socket
+	_ = syscall.Close(h.fd)
+	if h.ring != nil {
+		_ = syscall.Munmap(h.ring)
+	}
+}
+
 // set a classic BPF filter on the listener. filter must be compliant with
 // tcpdump syntax.
 func (h *Handle) setFilter() error {
