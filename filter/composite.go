@@ -1,15 +1,13 @@
 package filter
 
 import (
-	"sort"
-
 	"golang.org/x/net/bpf"
 )
 
 // composite implements Filter
 type composite struct {
-	primitives primitives
-	and        bool
+	filters Filters
+	and     bool
 }
 
 func (c composite) Compile() ([]bpf.Instruction, error) {
@@ -19,18 +17,18 @@ func (c composite) Compile() ([]bpf.Instruction, error) {
 	// The simplest way to implement is to just have interim jump steps.
 	inst := []bpf.Instruction{}
 	size := uint32(c.Size())
-	for i, p := range c.primitives {
-		pinst, err := p.Compile()
+	for i, f := range c.filters {
+		finst, err := f.Compile()
 		if err != nil {
 			return nil, err
 		}
 		// remove the last two instructions, which are the returns, if we are not on the last one
-		if i == len(c.primitives)-1 {
-			inst = append(inst, pinst...)
+		if i == len(c.filters)-1 {
+			inst = append(inst, finst...)
 			continue
 		}
-		pinst = pinst[:len(pinst)-2]
-		inst = append(inst, pinst...)
+		finst = finst[:len(finst)-2]
+		inst = append(inst, finst...)
 		// now add the jump to the next steppf.
 		// the expectation of every primitive is that the second to last is success,
 		// and the last is fail. For that step.
@@ -57,46 +55,33 @@ func (c composite) Equal(o Filter) bool {
 	if !ok {
 		return false
 	}
-	return c.and == oc.and && c.primitives.Equal(oc.primitives)
+	return c.and == oc.and && c.filters.Equal(oc.filters)
 }
 
 // Size how many elements do we expect
 func (c composite) Size() uint8 {
 	var size uint8
-	for _, p := range c.primitives {
-		size += p.Size()
+	for _, f := range c.filters {
+		size += f.Size()
 	}
 	return size
 }
 
-type primitives []primitive
-
-func (p primitives) Len() int {
-	return len(p)
-}
-
-func (p primitives) Less(i, j int) bool {
+func (c composite) IsPrimitive() bool {
 	return false
 }
-
-func (p primitives) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
+func (c composite) Type() ElementType {
+	return Composite
 }
-func (p primitives) Equal(o primitives) bool {
-	// not matched if of the wrong length
-	if len(p) != len(o) {
-		return false
-	}
 
-	// copy so that our sort does not affect the original
-	p1 := p[:]
-	o1 := o[:]
-	sort.Sort(p1)
-	sort.Sort(o1)
-	for i, val := range p1 {
-		if !val.Equal(o1[i]) {
-			return false
-		}
+func (c composite) LastPrimitive() *primitive {
+	if len(c.filters) == 0 {
+		return nil
 	}
-	return true
+	last := c.filters[len(c.filters)-1]
+	if !last.IsPrimitive() {
+		return nil
+	}
+	p := last.(primitive)
+	return &p
 }

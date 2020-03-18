@@ -40,6 +40,12 @@ var kinds = map[string]filterKind{
 	"port":      filterKindPort,
 	"portrange": filterKindPortRange,
 }
+var kinds2 = map[ExpressionToken]filterKind{
+	tokenHost:      filterKindHost,
+	tokenNet:       filterKindNet,
+	tokenPort:      filterKindPort,
+	tokenPortRange: filterKindPortRange,
+}
 
 type filterDirection int
 
