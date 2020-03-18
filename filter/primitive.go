@@ -25,6 +25,9 @@ type primitive struct {
 func (p primitive) IsPrimitive() bool {
 	return true
 }
+func (p primitive) Type() ElementType {
+	return Primitive
+}
 
 func (p primitive) Compile() ([]bpf.Instruction, error) {
 	// validate it

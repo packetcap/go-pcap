@@ -48,20 +48,20 @@ func TestExpressionHasNext(t *testing.T) {
 func TestExpressionNextJoiner(t *testing.T) {
 	tests := []struct {
 		filter string
-		prim   bool
+		etype  ElementType
 		and    bool
 	}{
-		{"and", false, true},
-		{"or", false, false},
-		{"abc", true, false},
+		{"and", Joiner, true},
+		{"or", Joiner, false},
+		{"abc", Primitive, false},
 	}
 	for i, tt := range tests {
 		e := NewExpression(tt.filter)
 		f := e.Next()
-		if f.IsPrimitive() != tt.prim {
-			t.Fatalf("%d: mismatched IsPrimitive, actual %v, expected %v", i, f.IsPrimitive(), tt.prim)
+		if f.Type() != tt.etype {
+			t.Fatalf("%d: mismatched IsPrimitive, actual %v, expected %v", i, f.Type(), tt.etype)
 		}
-		if tt.prim {
+		if tt.etype != Joiner {
 			continue
 		}
 		val := f.(*and)
@@ -156,9 +156,9 @@ func TestExpressionNextPrimitive(t *testing.T) {
 	for _, tt := range tests {
 		e := NewExpression(tt.expression)
 		f := e.Next()
-		val := f.(*primitive)
+		val := f.(primitive)
 		if !val.Equal(tt.prim) {
-			t.Errorf("%s: mismatched value\nactual   %#v\nexpected %#v", tt.expression, *val, tt.prim)
+			t.Errorf("%s: mismatched value\nactual   %#v\nexpected %#v", tt.expression, val, tt.prim)
 		}
 	}
 }
