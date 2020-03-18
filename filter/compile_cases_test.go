@@ -998,6 +998,60 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
 		}, ""},
+		// next one is interesting. It could be a composite "udp and port 23" or primitive "udp port 23".
+		// so we test it with both.
+		{"udp port 23", primitive{
+			kind:        filterKindPort,
+			direction:   filterDirectionSrcOrDst,
+			protocol:    filterProtocolUnset,
+			subProtocol: filterSubProtocolUDP,
+			id:          "23",
+		}, nil, []bpf.Instruction{
+			// get ethernet protocol
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			// ipv6? next several steps
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 6},
+			bpf.LoadAbsolute{Off: 20, Size: 1},                                      // protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 15},               // udp
+			bpf.LoadAbsolute{Off: 54, Size: 2},                                      // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 12},                // port 23
+			bpf.LoadAbsolute{Off: 56, Size: 2},                                      // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 10, SkipFalse: 11}, // port 23
+			// ipv4? next several steps
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 10},
+			bpf.LoadAbsolute{Off: 23, Size: 1},                          // ip protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 8},    // udp
+			bpf.LoadAbsolute{Off: 20, Size: 2},                          // flags+fragment offset, since we need to calc where the src/dst port is
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 6}, // do we have an L4 header?
+			bpf.LoadMemShift{Off: 14},                                   // calculate size of IP header
+			bpf.LoadIndirect{Off: 14, Size: 2},                          // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 2},     // port 23
+			bpf.LoadIndirect{Off: 16, Size: 2},                          // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipFalse: 1},    // port 23
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+		}, `
+			(000) ldh      [12]
+			(001) jeq      #0x86dd          jt 2	jf 8
+			(002) ldb      [20]
+			(003) jeq      #0x11            jt 4	jf 19
+			(004) ldh      [54]
+			(005) jeq      #0x17            jt 18	jf 6
+			(006) ldh      [56]
+			(007) jeq      #0x17            jt 18	jf 19
+			(008) jeq      #0x800           jt 9	jf 19
+			(009) ldb      [23]
+			(010) jeq      #0x11            jt 11	jf 19
+			(011) ldh      [20]
+			(012) jset     #0x1fff          jt 19	jf 13
+			(013) ldxb     4*([14]&0xf)
+			(014) ldh      [x + 14]
+			(015) jeq      #0x17            jt 18	jf 16
+			(016) ldh      [x + 16]
+			(017) jeq      #0x17            jt 18	jf 19
+			(018) ret      #262144
+			(019) ret      #0
+			`},
 	},
 	"net_ip4": []testCaseExpressions{
 		{"net abc", primitive{
@@ -1849,25 +1903,38 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		{"udp", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
-			protocol:    filterProtocolIP,
+			protocol:    filterProtocolUnset,
 			subProtocol: filterSubProtocolUDP,
 			id:          "",
 		}, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
-			// ipv4? next several steps, else fail
+			// ipv6: next several steps
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 5},
+			bpf.LoadAbsolute{Off: 20, Size: 1},                                    // ip6 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipTrue: 6},               // udp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2c, SkipFalse: 6},              // is a continuation packet
+			bpf.LoadAbsolute{Off: 54, Size: 1},                                    // ip6 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipTrue: 3, SkipFalse: 4}, // udp
+			// ipv4: next several steps
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 3},
-			bpf.LoadAbsolute{Off: 23, Size: 1},                       // ip protocol
+			bpf.LoadAbsolute{Off: 23, Size: 1},                       // ip6 protocol
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 1}, // udp
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
 		}, `
 		(000) ldh      [12]
-		(001) jeq      #0x800           jt 2	jf 5
-		(002) ldb      [23]
-		(003) jeq      #0x11            jt 4	jf 5
-		(004) ret      #262144
-		(005) ret      #0
+		(001) jeq      #0x86dd          jt 2	jf 7
+		(002) ldb      [20]
+		(003) jeq      #0x11            jt 10	jf 4
+		(004) jeq      #0x2c            jt 5	jf 11
+		(005) ldb      [54]
+		(006) jeq      #0x11            jt 10	jf 11
+		(007) jeq      #0x800           jt 8	jf 11
+		(008) ldb      [23]
+		(009) jeq      #0x11            jt 10	jf 11
+		(010) ret      #262144
+		(011) ret      #0
 		`},
 	},
 	"composite": []testCaseExpressions{
@@ -1877,7 +1944,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 				primitive{
 					kind:        filterKindUnset,
 					direction:   filterDirectionSrcOrDst,
-					protocol:    filterProtocolIP,
+					protocol:    filterProtocolUnset,
 					subProtocol: filterSubProtocolUDP,
 					id:          "",
 				},
@@ -1888,14 +1955,111 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 					id:        "23",
 				},
 			},
-		}, nil, nil, ""},
-		{"host abc or port 23", composite{
+		}, nil, []bpf.Instruction{
+			/* the real steps
+			// get ethernet protocol
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			// ipv6? next several steps
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 6},
+			bpf.LoadAbsolute{Off: 20, Size: 1},                        // protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 15}, // udp
+			bpf.LoadAbsolute{Off: 54, Size: 1},                        // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 12},  // port 23
+			bpf.LoadAbsolute{Off: 56, Size: 1},                        // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 12},  // port 23
+			// ipv4? next several steps
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 10},
+			bpf.LoadAbsolute{Off: 23, Size: 1},                          // ip protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 8},    // udp
+			bpf.LoadAbsolute{Off: 20, Size: 2},                          // flags+fragment offset, since we need to calc where the src/dst port is
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 6}, // do we have an L4 header?
+			bpf.LoadMemShift{Off: 14},                                   // calculate size of IP header
+			bpf.LoadIndirect{Off: 14, Size: 2},                          // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 2},     // port 23
+			bpf.LoadIndirect{Off: 16, Size: 2},                          // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipFalse: 1},    // port 23
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+			*/
+			// our interim one
+
+			// the first primitive: udp
+			// get ethernet protocol
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			// ipv6: next several steps
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 5},
+			bpf.LoadAbsolute{Off: 20, Size: 1},                                    // ip6 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipTrue: 6},               // udp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2c, SkipFalse: 6},              // is a continuation packet
+			bpf.LoadAbsolute{Off: 54, Size: 1},                                    // ip6 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipTrue: 3, SkipFalse: 4}, // udp
+			// ipv4: next several steps
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 3},
+			bpf.LoadAbsolute{Off: 23, Size: 1},                       // ip6 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 1}, // udp
+			bpf.Jump{Skip: 1},
+			bpf.Jump{Skip: 23},
+
+			// the second primitive: port 23
+			// get ethernet protocol
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			// ipv6? next several steps; else check ipv6
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 8},
+			bpf.LoadAbsolute{Off: 20, Size: 1},                        // ip protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x84, SkipTrue: 2},   // sctp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipTrue: 1},   // tcp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 17}, // udp
+			bpf.LoadAbsolute{Off: 54, Size: 2},                        // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 23, SkipTrue: 14},
+			bpf.LoadAbsolute{Off: 56, Size: 2}, // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 23, SkipTrue: 12, SkipFalse: 13},
+			// ipv4? next several steps, else fail
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 12},
+			bpf.LoadAbsolute{Off: 23, Size: 1},                          // ip protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x84, SkipTrue: 2},     // sctp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipTrue: 1},     // tcp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 8},    // udp
+			bpf.LoadAbsolute{Off: 20, Size: 2},                          // flags+fragment offset, since we need to calc where the src/dst port is
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 6}, // do we have an L4 header?
+			bpf.LoadMemShift{Off: 14},                                   // calculate size of IP header
+			bpf.LoadIndirect{Off: 14, Size: 2},                          // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 23, SkipTrue: 2},
+			bpf.LoadIndirect{Off: 16, Size: 2}, // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 23, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+		}, `
+		// This is the real one given by "tcpdump -d udp and port 23".
+		// However, we are not doing it for now; just some interim steps
+		// we can optimize later
+			(000) ldh      [12]
+			(001) jeq      #0x86dd          jt 2	jf 8
+			(002) ldb      [20]
+			(003) jeq      #0x11            jt 4	jf 19
+			(004) ldh      [54]
+			(005) jeq      #0x17            jt 18	jf 6
+			(006) ldh      [56]
+			(007) jeq      #0x17            jt 18	jf 19
+			(008) jeq      #0x800           jt 9	jf 19
+			(009) ldb      [23]
+			(010) jeq      #0x11            jt 11	jf 19
+			(011) ldh      [20]
+			(012) jset     #0x1fff          jt 19	jf 13
+			(013) ldxb     4*([14]&0xf)
+			(014) ldh      [x + 14]
+			(015) jeq      #0x17            jt 18	jf 16
+			(016) ldh      [x + 16]
+			(017) jeq      #0x17            jt 18	jf 19
+			(018) ret      #262144
+			(019) ret      #0
+			`},
+		{"host 10.100.100.100 or port 23", composite{
 			and: false,
 			primitives: []primitive{
 				primitive{
 					kind:      filterKindHost,
 					direction: filterDirectionSrcOrDst,
-					id:        "abc",
+					id:        "10.100.100.100",
 				},
 				primitive{
 					kind:      filterKindPort,
@@ -1904,7 +2068,126 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 					id:        "23",
 				},
 			},
-		}, nil, nil, ""},
+		}, nil, []bpf.Instruction{
+			// first condition: "host 10.100.100.100"
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 4},
+			bpf.LoadAbsolute{Off: 26, Size: 4},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipTrue: 8},
+			bpf.LoadAbsolute{Off: 30, Size: 4},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipTrue: 6, SkipFalse: 7},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x806, SkipTrue: 1},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x8035, SkipFalse: 5},
+			bpf.LoadAbsolute{Off: 28, Size: 4},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipTrue: 2},
+			bpf.LoadAbsolute{Off: 38, Size: 4},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipFalse: 1},
+			// OR - so success to end and fail to next
+			bpf.Jump{Skip: 23},
+			bpf.Jump{Skip: 0},
+
+			// second condition: "port 23"
+			// get ethernet protocol
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			// ipv6? next several steps; else check ipv6
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 8},
+			bpf.LoadAbsolute{Off: 20, Size: 1},                        // ip protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x84, SkipTrue: 2},   // sctp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipTrue: 1},   // tcp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 17}, // udp
+			bpf.LoadAbsolute{Off: 54, Size: 2},                        // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 14},
+			bpf.LoadAbsolute{Off: 56, Size: 2}, // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 12, SkipFalse: 13},
+			// ipv4? next several steps, else fail
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 12},
+			bpf.LoadAbsolute{Off: 23, Size: 1},                          // ip protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x84, SkipTrue: 2},     // sctp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipTrue: 1},     // tcp
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 8},    // udp
+			bpf.LoadAbsolute{Off: 20, Size: 2},                          // flags+fragment offset, since we need to calc where the src/dst port is
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 6}, // do we have an L4 header?
+			bpf.LoadMemShift{Off: 14},                                   // calculate size of IP header
+			bpf.LoadIndirect{Off: 14, Size: 2},                          // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 2},
+			bpf.LoadIndirect{Off: 16, Size: 2}, // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+			/* the real steps
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 15},
+			bpf.LoadAbsolute{Off: 26, Size: 4},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipTrue: 28},
+			bpf.LoadAbsolute{Off: 30, Size: 4},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipTrue: 26},
+			bpf.LoadAbsolute{Off: 23, Size: 1},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x84, SkipTrue: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipTrue: 1},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 23},
+			bpf.LoadAbsolute{Off: 20, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 21},
+			bpf.LoadMemShift{Off: 14},
+			bpf.LoadIndirect{Off: 14, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 17},
+			bpf.LoadIndirect{Off: 16, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 15},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x806, SkipTrue: 1},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x8035, SkipFalse: 4},
+			bpf.LoadAbsolute{Off: 28, Size: 4},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipTrue: 11},
+			bpf.LoadAbsolute{Off: 38, Size: 4},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipTrue: 9},
+			// ipv6
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 9},
+			bpf.LoadAbsolute{Off: 20, Size: 1},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x84, SkipTrue: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipTrue: 1},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 5},
+			bpf.LoadAbsolute{Off: 54, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipTrue: 2},
+			bpf.LoadAbsolute{Off: 56, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x17, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+			*/
+		}, `
+			// this is the real one given by "tcpdump -d"; we may optimize towards it in the future
+		(000) ldh      [12]
+		(001) jeq      #0x800           jt 2	jf 17
+		(002) ld       [26]
+		(003) jeq      #0xa646464       jt 32	jf 4
+		(004) ld       [30]
+		(005) jeq      #0xa646464       jt 32	jf 6
+		(006) ldb      [23]
+		(007) jeq      #0x84            jt 10	jf 8
+		(008) jeq      #0x6             jt 10	jf 9
+		(009) jeq      #0x11            jt 10	jf 33
+		(010) ldh      [20]
+		(011) jset     #0x1fff          jt 33	jf 12
+		(012) ldxb     4*([14]&0xf)
+		(013) ldh      [x + 14]
+		(014) jeq      #0x17            jt 32	jf 15
+		(015) ldh      [x + 16]
+		(016) jeq      #0x17            jt 32	jf 33
+		(017) jeq      #0x806           jt 19	jf 18
+		(018) jeq      #0x8035          jt 19	jf 23
+		(019) ld       [28]
+		(020) jeq      #0xa646464       jt 32	jf 21
+		(021) ld       [38]
+		(022) jeq      #0xa646464       jt 32	jf 33
+		(023) jeq      #0x86dd          jt 24	jf 33
+		(024) ldb      [20]
+		(025) jeq      #0x84            jt 28	jf 26
+		(026) jeq      #0x6             jt 28	jf 27
+		(027) jeq      #0x11            jt 28	jf 33
+		(028) ldh      [54]
+		(029) jeq      #0x17            jt 32	jf 30
+		(030) ldh      [56]
+		(031) jeq      #0x17            jt 32	jf 33
+		(032) ret      #262144
+		(033) ret      #0
+		`},
 		// automatic carry-forward of defaults
 		{"tcp dst port ftp or ftp-data or domain", composite{
 			and: false,
@@ -1912,26 +2195,133 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 				primitive{
 					kind:        filterKindPort,
 					direction:   filterDirectionDst,
-					protocol:    filterProtocolIP,
+					protocol:    filterProtocolUnset,
 					subProtocol: filterSubProtocolTCP,
 					id:          "ftp",
 				},
 				primitive{
 					kind:        filterKindPort,
 					direction:   filterDirectionDst,
-					protocol:    filterProtocolIP,
+					protocol:    filterProtocolUnset,
 					subProtocol: filterSubProtocolTCP,
 					id:          "ftp-data",
 				},
 				primitive{
 					kind:        filterKindPort,
 					direction:   filterDirectionDst,
-					protocol:    filterProtocolIP,
+					protocol:    filterProtocolUnset,
 					subProtocol: filterSubProtocolTCP,
 					id:          "domain",
 				},
 			},
-		}, nil, nil, ""},
+		}, nil, []bpf.Instruction{
+			// first: tcp dst port ftp
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 4},            // check ipv6
+			bpf.LoadAbsolute{Off: 20, Size: 1},                                    // ipv6 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 11},              // tcp
+			bpf.LoadAbsolute{Off: 56, Size: 2},                                    // ipv6 dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x15, SkipTrue: 8, SkipFalse: 9}, // ftp
+			// ipv4
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 8}, // ipv4
+			bpf.LoadAbsolute{Off: 23, Size: 1},                         // ipv4 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 6},    // tcp
+			bpf.LoadAbsolute{Off: 20, Size: 2},                         // next few steps calculate location of ipv4 port
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 4},
+			bpf.LoadMemShift{Off: 14},
+			bpf.LoadIndirect{Off: 16, Size: 2},                       // ipv4 dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x15, SkipFalse: 1}, // ftp
+
+			// OR - jump to next
+			bpf.Jump{Skip: 31},
+			bpf.Jump{Skip: 0},
+
+			// second: tcp dst port ftp-data
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 4},            // check ipv6
+			bpf.LoadAbsolute{Off: 20, Size: 1},                                    // ipv6 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 11},              // tcp
+			bpf.LoadAbsolute{Off: 56, Size: 2},                                    // ipv6 dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x14, SkipTrue: 8, SkipFalse: 9}, // ftp-data
+			// ipv4
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 8}, // ipv4
+			bpf.LoadAbsolute{Off: 23, Size: 1},                         // ipv4 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 6},    // tcp
+			bpf.LoadAbsolute{Off: 20, Size: 2},                         // next few steps calculate location of ipv4 port
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 4},
+			bpf.LoadMemShift{Off: 14},
+			bpf.LoadIndirect{Off: 16, Size: 2},                       // ipv4 dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x14, SkipFalse: 1}, // ftp-data
+
+			// OR - jump to next
+			bpf.Jump{Skip: 15},
+			bpf.Jump{Skip: 0},
+
+			// third: tcp dst port domain
+			bpf.LoadAbsolute{Off: 12, Size: 2},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 4},            // check ipv6
+			bpf.LoadAbsolute{Off: 20, Size: 1},                                    // ipv6 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 11},              // tcp
+			bpf.LoadAbsolute{Off: 56, Size: 2},                                    // ipv6 dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x35, SkipTrue: 8, SkipFalse: 9}, // domain
+			// ipv4
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 8}, // ipv4
+			bpf.LoadAbsolute{Off: 23, Size: 1},                         // ipv4 protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 6},    // tcp
+			bpf.LoadAbsolute{Off: 20, Size: 2},                         // next few steps calculate location of ipv4 port
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 4},
+			bpf.LoadMemShift{Off: 14},
+			bpf.LoadIndirect{Off: 16, Size: 2},                       // ipv4 dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x35, SkipFalse: 1}, // domain
+
+			// end
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+			/*
+				Here is the real one; we may optimize for it later
+				bpf.LoadAbsolute{Off: 12, Size: 2},
+				// ipv6
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 4}, // check ipv6
+				bpf.LoadAbsolute{Off: 20, Size: 1},  												// ipv6 protocol
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 13},		// tcp
+				bpf.LoadAbsolute{Off: 56, Size: 2},													// ipv6 dst port
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x15, SkipTrue: 10, SkipFalse: 8},	// ftp
+				// ipv4
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 10}, // ipv4
+				bpf.LoadAbsolute{Off: 23, Size: 1}, 												 // ipv4 protocol
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 8},		 // tcp
+				bpf.LoadAbsolute{Off: 20, Size: 2},													 // next few steps calculate location of ipv4 port
+				bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 21},
+				bpf.LoadMemShift{Off: 14},
+				bpf.LoadIndirect{Off: 16, Size: 2},														// ipv4 dst port
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x15, SkipTrue: 2},			// ftp
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x14, SkipTrue: 1},			// ftp-data
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x35, SkipFalse: 1},			// domain/dns
+				bpf.RetConstant{Val: 262144},
+				bpf.RetConstant{Val: 0},
+
+			*/
+		}, `
+		// this is the true one given by "tcpdump -d"; we may optimize towards it later
+		(000) ldh      [12]
+		(001) jeq      #0x86dd          jt 2	jf 6
+		(002) ldb      [20]
+		(003) jeq      #0x6             jt 4	jf 17
+		(004) ldh      [56]
+		(005) jeq      #0x15            jt 16	jf 14
+		(006) jeq      #0x800           jt 7	jf 17
+		(007) ldb      [23]
+		(008) jeq      #0x6             jt 9	jf 17
+		(009) ldh      [20]
+		(010) jset     #0x1fff          jt 17	jf 11
+		(011) ldxb     4*([14]&0xf)
+		(012) ldh      [x + 16]
+		(013) jeq      #0x15            jt 16	jf 14
+		(014) jeq      #0x14            jt 16	jf 15
+		(015) jeq      #0x35            jt 16	jf 17
+		(016) ret      #262144
+		(017) ret      #0
+		`},
 	},
 }
 

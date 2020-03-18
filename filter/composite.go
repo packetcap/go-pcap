@@ -13,7 +13,40 @@ type composite struct {
 }
 
 func (c composite) Compile() ([]bpf.Instruction, error) {
-	return nil, nil
+	// first compile each one, then go through them and join with the 'and' or 'or'
+	//   - if 'and', then a failure of any one is straight to fail
+	//   - if 'or', then a failure of any one means to move on to the next
+	// The simplest way to implement is to just have interim jump steps.
+	inst := []bpf.Instruction{}
+	size := uint32(c.Size())
+	for i, p := range c.primitives {
+		pinst, err := p.Compile()
+		if err != nil {
+			return nil, err
+		}
+		// remove the last two instructions, which are the returns, if we are not on the last one
+		if i == len(c.primitives)-1 {
+			inst = append(inst, pinst...)
+			continue
+		}
+		pinst = pinst[:len(pinst)-2]
+		inst = append(inst, pinst...)
+		// now add the jump to the next steppf.
+		// the expectation of every primitive is that the second to last is success,
+		// and the last is fail. For that step.
+		if c.and {
+			// Each step is required, so if the previous step failed, it just fails.
+			// If it succeeded, go to the next one.
+			inst = append(inst, bpf.Jump{Skip: 1})
+			inst = append(inst, bpf.Jump{Skip: size - uint32(len(inst)) - 2})
+		} else {
+			// Each step is not required, so if the previous step failed, go to next.
+			// If it succeeded, return success.
+			inst = append(inst, bpf.Jump{Skip: size - uint32(len(inst)) - 3})
+			inst = append(inst, bpf.Jump{Skip: 0})
+		}
+	}
+	return inst, nil
 }
 
 func (c composite) Equal(o Filter) bool {
@@ -29,7 +62,11 @@ func (c composite) Equal(o Filter) bool {
 
 // Size how many elements do we expect
 func (c composite) Size() uint8 {
-	return 0
+	var size uint8
+	for _, p := range c.primitives {
+		size += p.Size()
+	}
+	return size
 }
 
 type primitives []primitive

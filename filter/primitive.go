@@ -125,9 +125,9 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 			inst.append(loadIPv6Protocol)
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
-				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))
+				inst.append(compareIPv6Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
 			case filterSubProtocolUDP:
-				inst.append(compareSubProtocolUDP(0, inst.skipToFail()))
+				inst.append(compareIPv6Protocol(ipProtocolUDP, 0, inst.skipToFail())...)
 			case filterSubProtocolStp:
 				inst.append(compareSubProtocolSctp(0, inst.skipToFail()))
 			case filterSubProtocolUnset:
@@ -168,6 +168,22 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 			}
 			inst.append(compareProtocolIP6(0, steps))
 			inst.append(loadIPv6Protocol)
+
+			/* TODO: FIX HERE
+			switch p.subProtocol {
+			case filterSubProtocolUDP:
+				inst.append(compareProtocolIP6(0, 5)) // size of compareIPv6Protocol
+				inst.append(compareIPv6Protocol(ipProtocolUDP, inst.skipToSucceed(), inst.skipToFail())...)
+				inst.append(compareProtocolIP4(0, inst.skipToFail()))
+				inst.append(compareIPv4Protocol(ipProtocolUDP, 0, inst.skipToFail())...)
+			case filterSubProtocolTCP:
+				inst.append(compareProtocolIP6(0, 5)) // size of compareIPv6Protocol
+				inst.append(compareIPv6Protocol(ipProtocolTCP, inst.skipToSucceed(), inst.skipToFail())...)
+				inst.append(compareProtocolIP4(0, inst.skipToFail()))
+				inst.append(compareIPv4Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
+			}
+			*/
+
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
 				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))
@@ -264,12 +280,11 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 			}
 		case filterProtocolIP6:
 			inst.append(compareProtocolIP6(0, inst.skipToFail()))
-			inst.append(loadIPv6Protocol)
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
-				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))
+				inst.append(compareIPv6Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
 			case filterSubProtocolUDP:
-				inst.append(compareSubProtocolUDP(0, inst.skipToFail()))
+				inst.append(compareIPv6Protocol(ipProtocolUDP, 0, inst.skipToFail())...)
 			}
 		case filterProtocolArp:
 			inst.append(compareProtocolArp(0, inst.skipToFail()))
@@ -285,6 +300,20 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				inst.append(compareProtocolArp(0, inst.skipToFail()))
 			case filterSubProtocolRarp:
 				inst.append(compareProtocolRarp(0, inst.skipToFail()))
+			}
+		case filterProtocolUnset:
+			// kind is unset, and protocol is unset, so subprotocol must be set or it would have failed vaildation
+			switch p.subProtocol {
+			case filterSubProtocolUDP:
+				inst.append(compareProtocolIP6(0, 5)) // size of compareIPv6Protocol
+				inst.append(compareIPv6Protocol(ipProtocolUDP, inst.skipToSucceed(), inst.skipToFail())...)
+				inst.append(compareProtocolIP4(0, inst.skipToFail()))
+				inst.append(compareIPv4Protocol(ipProtocolUDP, 0, inst.skipToFail())...)
+			case filterSubProtocolTCP:
+				inst.append(compareProtocolIP6(0, 5)) // size of compareIPv6Protocol
+				inst.append(compareIPv6Protocol(ipProtocolTCP, inst.skipToSucceed(), inst.skipToFail())...)
+				inst.append(compareProtocolIP4(0, inst.skipToFail()))
+				inst.append(compareIPv4Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
 			}
 		}
 	}
@@ -360,7 +389,7 @@ func (p primitive) validate() error {
 				return fmt.Errorf("invalid ethernet address: %s", p.id)
 			}
 		}
-	case p.kind == filterKindUnset && p.protocol == filterProtocolUnset:
+	case p.kind == filterKindUnset && p.protocol == filterProtocolUnset && p.subProtocol == filterSubProtocolUnset:
 		return fmt.Errorf("parse error")
 	case p.kind == filterKindPort:
 		if _, err := findPort(p.id); err != nil {
@@ -606,8 +635,15 @@ func (p primitive) calculateStepsKindUnset() uint8 {
 	// 2 to load and compare the ether protocol
 	// 2 more to load and compare the sub protocol, if provided
 	count += 2
-	if p.protocol != filterProtocolEther {
-		count += 2
+	switch {
+	case p.protocol == filterProtocolUnset:
+		// protocol is unset in addition to kind, so it depends on the subprotocol
+		count++    // check ipv4 and ipv6
+		count += 2 // 2 for ipv6 protocol check
+		count += 3 // 3 for ipv6 continuation packet protocol check
+		count += 2 // 2 for ipv4 protocol check
+	case p.protocol != filterProtocolEther:
+		count += 2 // for ether, it already was covered
 	}
 	return count
 }
