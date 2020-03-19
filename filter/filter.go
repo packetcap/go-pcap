@@ -13,6 +13,7 @@ type Filter interface {
 	Size() uint8
 	IsPrimitive() bool
 	Type() ElementType
+	Distill() Filter
 }
 
 type ElementType uint8

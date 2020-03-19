@@ -29,6 +29,10 @@ func (p primitive) Type() ElementType {
 	return Primitive
 }
 
+func (p primitive) Distill() Filter {
+	return p
+}
+
 func (p primitive) Compile() ([]bpf.Instruction, error) {
 	// validate it
 	if err := p.validate(); err != nil {

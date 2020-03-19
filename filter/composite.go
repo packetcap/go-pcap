@@ -85,3 +85,24 @@ func (c composite) LastPrimitive() *primitive {
 	p := last.(primitive)
 	return &p
 }
+
+// Distill work through all of the member filters and see if some can be combined
+func (c composite) Distill() Filter {
+	list := make(Filters, 0)
+	// do this in 2 rounds:
+	// 1. We distill all of our children, as this may convert some composites into primitives
+	// 2. Distill all of the primitives in our list, if we can
+	for _, f := range c.filters {
+		list = append(list, f.Distill())
+	}
+	c.filters = list
+	// if there is just one element, return that one
+	if len(c.filters) == 1 {
+		return c.filters[0]
+	}
+	// only can distill with and
+	if !c.and {
+		return c
+	}
+	return c
+}
