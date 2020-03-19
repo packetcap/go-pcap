@@ -29,6 +29,75 @@ func (p primitive) Type() ElementType {
 	return Primitive
 }
 
+func (p primitive) Distill() Filter {
+	return p
+}
+
+// Combine combines this primitive with another primitive, if they are combinable,
+// without any loss of information. If they are not combinable, returns nil; if they
+// are, returns a new primitive that represents both.
+func (p primitive) Combine(o *primitive) *primitive {
+	if p.Equal(o) {
+		return &p
+	}
+	// our definition of "combinable" is: all of the fields that are set in one are either
+	// set to the same value in the other, or Unset
+	c := primitive{}
+	switch {
+	case p.kind == o.kind || o.kind == filterKindUnset:
+		c.kind = p.kind
+	case p.kind == filterKindUnset:
+		c.kind = o.kind
+	default:
+		return nil
+	}
+
+	switch {
+	case p.direction == o.direction || o.direction == filterDirectionUnset:
+		c.direction = p.direction
+	case p.direction == filterDirectionUnset:
+		c.direction = o.direction
+	default:
+		return nil
+	}
+
+	switch {
+	case p.protocol == o.protocol || o.protocol == filterProtocolUnset:
+		c.protocol = p.protocol
+	case p.protocol == filterProtocolUnset:
+		c.protocol = o.protocol
+	default:
+		return nil
+	}
+
+	switch {
+	case p.subProtocol == o.subProtocol || o.subProtocol == filterSubProtocolUnset:
+		c.subProtocol = p.subProtocol
+	case p.subProtocol == filterSubProtocolUnset:
+		c.subProtocol = o.subProtocol
+	default:
+		return nil
+	}
+
+	switch {
+	case p.id == o.id || o.id == "":
+		c.id = p.id
+	case p.id == "":
+		c.id = o.id
+	default:
+		return nil
+	}
+
+	switch {
+	case p.negator == o.negator:
+		c.negator = p.negator
+	default:
+		return nil
+	}
+
+	return &c
+}
+
 func (p primitive) Compile() ([]bpf.Instruction, error) {
 	// validate it
 	if err := p.validate(); err != nil {

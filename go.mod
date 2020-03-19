@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/alecthomas/gocyclo v0.0.0-20150208221726-aa8f8b160214 // indirect
+	github.com/alexkohler/nakedret v1.0.0 // indirect
 	github.com/coreos/go-etcd v2.0.0+incompatible // indirect
 	github.com/cosiner/argv v0.0.1 // indirect
 	github.com/cpuguy83/go-md2man v1.0.10 // indirect
@@ -19,10 +20,12 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/cobra v0.0.6
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/tsenart/deadcode v0.0.0-20160724212837-210d2dc333e9 // indirect
 	github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8 // indirect
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
 	golang.org/x/arch v0.0.0-20200312215426-ff8b605520f4 // indirect
-	golang.org/x/net v0.0.0-20190620200207-3b0461eec859
+	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
 	golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527
 	gopkg.in/yaml.v2 v2.2.8 // indirect
+	mvdan.cc/unparam v0.0.0-20200314162735-0ac8026f7d06 // indirect
 )

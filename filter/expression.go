@@ -213,11 +213,7 @@ func (e *Expression) Compile() Filter {
 			combo.and = bool(*isAnd)
 		}
 	}
-	// if there is just one element, return that one
-	if len(combo.filters) == 1 {
-		return combo.filters[0]
-	}
-	return combo
+	return combo.Distill()
 }
 
 func (e *Expression) scan() (ExpressionToken, string) {
