@@ -104,5 +104,30 @@ func (c composite) Distill() Filter {
 	if !c.and {
 		return c
 	}
+	// we have "and" joiner, so perhaps we can combine overlapping elements
+	prims := make(primitives, 0)
+	compos := make([]composite, 0)
+	for _, f := range c.filters {
+		if f.IsPrimitive() {
+			prims = append(prims, f.(primitive))
+		} else {
+			compos = append(compos, f.(composite))
+		}
+	}
+
+	p2 := prims.combine()
+	list = make(Filters, 0)
+	for _, p := range *p2 {
+		list = append(list, p)
+	}
+	for _, c := range compos {
+		list = append(list, c)
+	}
+	c.filters = list
+	// if there is just one element, return that one
+	if len(c.filters) == 1 {
+		return c.filters[0]
+	}
+
 	return c
 }
