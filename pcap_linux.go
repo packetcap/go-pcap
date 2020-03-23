@@ -87,7 +87,9 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 	// we check the bit setting on the pointer
 	logger.Debugf("checking for packet at position %d", h.framePtr)
 	if h.ring[h.framePtr]&syscall.TP_STATUS_USER != syscall.TP_STATUS_USER {
+		logger.Debugf("packet not ready at position %d, polling via %#v", h.framePtr, h.pollfd)
 		val, err := syscall.Poll(h.pollfd, -1)
+		logger.Debug("poll returned")
 		if err != nil {
 			logger.Errorf("error polling socket: %v", err)
 			return nil, ci, fmt.Errorf("error polling socket: %v", err)
@@ -222,6 +224,9 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	}
 	h.fd = fd
 	h.pollfd = []syscall.PollFd{{Fd: int32(h.fd), Events: syscall.POLLIN}}
+	if err := syscall.SetNonblock(fd, false); err != nil {
+		return nil, fmt.Errorf("failed to set socket as blocking: %v", err)
+	}
 	if iface != "" {
 		// get our interface
 		in, err := net.InterfaceByName(iface)
