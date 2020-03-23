@@ -24,7 +24,7 @@ type testCaseExpressions struct {
 
 var (
 	dnsRecords = map[string]map[string]string{
-		"www.google.com": map[string]string{
+		"www.google.com": {
 			"A":    "216.58.207.36",
 			"AAAA": "2a00:1450:4001:824::2004",
 		},
@@ -32,7 +32,7 @@ var (
 )
 
 var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
-	"hostname_invalid": []testCaseExpressions{
+	"hostname_invalid": {
 		{"abc", primitive{
 			kind:      filterKindUnset,
 			direction: filterDirectionUnset,
@@ -76,7 +76,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			id:        "abc",
 		}, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
 	},
-	"host_ip4": []testCaseExpressions{
+	"host_ip4": {
 		{"10.100.100.100", primitive{
 			kind:      filterKindUnset,
 			direction: filterDirectionUnset,
@@ -251,7 +251,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(013) ret      #0														return constant 0 (drop packet)
 		`},
 	},
-	"host_ip6": []testCaseExpressions{
+	"host_ip6": {
 		{"2a00:1450:4001:824::2004", primitive{
 			kind:      filterKindUnset,
 			direction: filterDirectionUnset,
@@ -452,7 +452,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(019) ret      #0
 		`},
 	},
-	"hostname_valid": []testCaseExpressions{
+	"hostname_valid": {
 		{"www.google.com", primitive{
 			kind:      filterKindUnset,
 			direction: filterDirectionUnset,
@@ -762,7 +762,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(030) ret      #0
 		`},
 	},
-	"port": []testCaseExpressions{
+	"port": {
 		{"port foo", primitive{
 			kind:      filterKindPort,
 			direction: filterDirectionSrcOrDst,
@@ -1053,7 +1053,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			(019) ret      #0
 			`},
 	},
-	"net_ip4": []testCaseExpressions{
+	"net_ip4": {
 		{"net abc", primitive{
 			kind:      filterKindNet,
 			direction: filterDirectionSrcOrDst,
@@ -1339,7 +1339,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(017) ret      #0
 		`},
 	},
-	"net_ip6": []testCaseExpressions{
+	"net_ip6": {
 		{"net 2a00:1450:4001:824::", primitive{
 			kind:      filterKindNet,
 			direction: filterDirectionSrcOrDst,
@@ -1607,7 +1607,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(013) ret      #0
 		`},
 	},
-	"ether_address": []testCaseExpressions{
+	"ether_address": {
 		{"ether abc", primitive{
 			kind:      filterKindUnset,
 			direction: filterDirectionSrcOrDst,
@@ -1770,7 +1770,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(009) ret      #0
 		`},
 	},
-	"ether_proto": []testCaseExpressions{
+	"ether_proto": {
 		{"ether proto foo", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
@@ -1851,7 +1851,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(003) ret      #0
 		`},
 	},
-	"ip_proto": []testCaseExpressions{
+	"ip_proto": {
 		{"ip proto abc", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
@@ -1937,7 +1937,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(011) ret      #0
 		`},
 	},
-	"composite": []testCaseExpressions{
+	"composite": {
 		// simple case that should combine down
 		{"udp and port 23", primitive{
 			kind:        filterKindPort,
