@@ -67,12 +67,7 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 }
 
 func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
-	logger := log.WithFields(log.Fields{
-		"func":   "readPacketDataMmap",
-		"method": "mmap",
-	})
-	logger.Debug("started")
-	return data, ci, nil
+	return nil, ci, errors.New("mmap unsupported on Darwin")
 }
 
 // Close close sockets and release resources

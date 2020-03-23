@@ -13,6 +13,7 @@ import (
 
 var (
 	useGopacket bool
+	useSyscalls bool
 	debug       bool
 	iface       string
 )
@@ -40,7 +41,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		fmt.Printf("capturing from interface %s\n", iface)
-		if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {
+		if handle, err = pcap.OpenLive(iface, 1600, true, 0, useSyscalls); err != nil {
 			log.Fatal(err)
 		}
 		if err := handle.SetBPFFilter(filter); err != nil {
@@ -63,6 +64,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().BoolVar(&useGopacket, "gopacket", false, "use gopacket interface instead of simple pcap.Listen")
+	rootCmd.Flags().BoolVar(&useSyscalls, "syscalls", pcap.DefaultSyscalls, "use syscalls instead of mmap when mmap is available; the default varies by platform")
 	rootCmd.Flags().BoolVar(&debug, "debug", false, "print lots of debugging messages")
 	rootCmd.Flags().StringVarP(&iface, "interface", "i", "", "interface from which to capture, default to all")
 }

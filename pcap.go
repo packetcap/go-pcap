@@ -13,6 +13,11 @@ import (
 	"golang.org/x/net/bpf"
 )
 
+const (
+	// DefaultSyscalls whether the default is to use syscalls or not
+	DefaultSyscalls = defaultSyscalls
+)
+
 // Packet a single packet returned by a listen call
 type Packet struct {
 	B     []byte
@@ -27,8 +32,8 @@ type BpfProgram struct {
 
 // OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/google/gopacket#PacketDataSource
 // so you can pass it there.
-func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration) (handle *Handle, _ error) {
-	return openLive(device, snaplen, promiscuous, timeout, defaultSyscalls)
+func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
+	return openLive(device, snaplen, promiscuous, timeout, syscalls)
 }
 
 // Listen simple one-step command to listen and send packets over a returned channel
