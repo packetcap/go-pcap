@@ -70,6 +70,18 @@ func init() {
 }
 
 func processPacket(packet gopacket.Packet, count int) {
+	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+		fmt.Printf("%d: IP packet ", count)
+		// Get actual IP data from this layer
+		ip, _ := ipLayer.(*layers.IPv4)
+		fmt.Printf("From src %d to dst %d\n", ip.SrcIP, ip.DstIP)
+	}
+	if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
+		fmt.Printf("%d: UDP packet ", count)
+		// Get actual UDP data from this layer
+		udp, _ := udpLayer.(*layers.UDP)
+		fmt.Printf("From src port %d to dst port %d\n", udp.SrcPort, udp.DstPort)
+	}
 	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
 		fmt.Printf("%d: TCP packet ", count)
 		// Get actual TCP data from this layer
