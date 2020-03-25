@@ -27,7 +27,8 @@ const (
 	defaultFramesPerBlock = 32
 	EthHlen               = 0x10
 	// defaultSyscalls default setting for using syscalls
-	defaultSyscalls = false
+	defaultSyscalls     = false
+	offsetToBlockStatus = 4 + 4
 )
 
 var (
@@ -36,6 +37,17 @@ var (
 	alignedTpacketRALLSize   int32
 	alignedTpacketAllHdrSize int32
 )
+
+type blockHeader struct {
+	Version      uint32
+	OffsetToPriv uint32
+	H1           syscall.TpacketHdrV1
+}
+
+type captured struct {
+	data []byte
+	ci   gopacket.CaptureInfo
+}
 
 type Handle struct {
 	syscalls        bool
@@ -49,17 +61,41 @@ type Handle struct {
 	frameIndex      uint32
 	frameSize       uint32
 	frameNumbers    uint32
-	blockSize       uint32
+	blockNumbers    int
+	blockSize       int
 	pollfd          []syscall.PollFd
 	endian          binary.ByteOrder
 	filter          []bpf.RawInstruction
+	cache           []captured
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
 	if h.syscalls {
 		return h.readPacketDataSyscall()
 	}
-	return h.readPacketDataMmap()
+	// mmap can return multiple packets, so we can cache extras, and return if there are
+
+	// if there already was one in the cache, return it
+	if len(h.cache) > 1 {
+		cap := h.cache[0]
+		h.cache = h.cache[1:]
+		return cap.data, cap.ci, nil
+	}
+	// there was not, so read a new one
+	caps, err := h.readPacketDataMmap()
+	if err != nil {
+		return nil, ci, err
+	}
+	switch len(caps) {
+	case 0:
+		return nil, ci, nil
+	case 1:
+		return caps[0].data, caps[0].ci, nil
+	}
+	h.cache = caps
+	cap := h.cache[0]
+	h.cache = h.cache[1:]
+	return cap.data, cap.ci, nil
 }
 
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
@@ -78,83 +114,88 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	return b, ci, nil
 }
 
-func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
+func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	logger := log.WithFields(log.Fields{
 		"func":   "readPacketDataMmap",
 		"method": "mmap",
 	})
 	logger.Debug("started")
 	// we check the bit setting on the pointer
-	logger.Debugf("checking for packet at position %d", h.framePtr)
-	if h.ring[h.framePtr]&syscall.TP_STATUS_USER != syscall.TP_STATUS_USER {
-		logger.Debugf("packet not ready at position %d, polling via %#v", h.framePtr, h.pollfd)
+	logger.Debugf("checking for packet at block %d", h.framePtr)
+	blockBase := h.framePtr * h.blockSize
+	if h.ring[blockBase+offsetToBlockStatus]&syscall.TP_STATUS_USER != syscall.TP_STATUS_USER {
+		logger.Debugf("packet not ready at block %d position %d, polling via %#v", h.framePtr, blockBase, h.pollfd)
 		val, err := syscall.Poll(h.pollfd, -1)
 		logger.Debug("poll returned")
 		if err != nil {
 			logger.Errorf("error polling socket: %v", err)
-			return nil, ci, fmt.Errorf("error polling socket: %v", err)
+			return nil, fmt.Errorf("error polling socket: %v", err)
 		}
 		if val == -1 {
 			logger.Error("negative return value from polling socket")
-			return nil, ci, errors.New("negative return value from polling socket")
+			return nil, errors.New("negative return value from polling socket")
 		}
 		// socket was ready, so read from the mmap now
 	}
 	// read the header
-	b := h.ring[h.framePtr:]
-	buf := bytes.NewBuffer(b[:alignedTpacketHdrSize])
-	hdr := syscall.TpacketHdr{}
-	err = binary.Read(buf, h.endian, &hdr)
-	if err != nil {
-		logger.Errorf("error reading tpacket header: %v", err)
-		return nil, ci, fmt.Errorf("error reading header: %v", err)
+	b := h.ring[blockBase : blockBase+h.blockSize]
+	buf := bytes.NewBuffer(b[:])
+	bHdr := blockHeader{}
+	if err := binary.Read(buf, h.endian, &bHdr); err != nil {
+		logger.Errorf("error reading block header: %v", err)
+		return nil, fmt.Errorf("error reading block header: %v", err)
 	}
-	// read the sockaddr_ll
-	// unfortunately, we cannot do binary.Read() because syscall.SockaddrLinklayer has an embedded slice
-	// so we have to read it manually
-	sall, err := parseSocketAddrLinkLayer(b[alignedTpacketHdrSize:alignedTpacketAllHdrSize], h.endian)
-	if err != nil {
-		logger.Errorf("error parsing sockaddr_ll: %v", err)
-		return nil, ci, fmt.Errorf("error parsing sockaddr_ll: %v", err)
-	}
-	// we do not do anything with this for now, because we leave it to the decoder
-	/*
-		l2content := b[hdr.Mac:hdr.Net]
-		l3content := b[hdr.Net:]
-	*/
+	logger.Debugf("block header %#v", bHdr)
+	// now we need to get the packets themselves
+	numPkts := int(bHdr.H1.Num_pkts)
+	packets := make([]captured, numPkts)
 
-	ci = gopacket.CaptureInfo{
-		Length:         int(hdr.Len),
-		CaptureLength:  int(hdr.Snaplen),
-		Timestamp:      time.Unix(int64(hdr.Sec), int64(hdr.Usec*1000)),
-		InterfaceIndex: int(sall.Ifindex),
-	}
-	data = b[hdr.Mac : uint32(hdr.Mac)+hdr.Snaplen]
+	nextOffset := bHdr.H1.Offset_to_first_pkt
+	for i := 0; i < numPkts; i++ {
+		hdr := syscall.Tpacket3Hdr{}
+		b = b[nextOffset:]
+		buf := bytes.NewBuffer(b[:alignedTpacketHdrSize])
+		if err := binary.Read(buf, h.endian, &hdr); err != nil {
+			msg := fmt.Sprintf("error reading tpacket3 header on byte %d: %v", i, err)
+			logger.Errorf(msg)
+			return nil, fmt.Errorf(msg)
+		}
+		logger.Debugf("tpacket3 header %#v", hdr)
+		nextOffset = hdr.Next_offset
 
-	logger.Debugf("raw packet %d\n ", data)
+		// read the sockaddr_ll
+		// unfortunately, we cannot do binary.Read() because syscall.SockaddrLinklayer has an embedded slice
+		// so we have to read it manually
+		// use b[hdr.Mac:hdr.Mac+alignedTpacketRALLSize] instead?
+		sall, err := parseSocketAddrLinkLayer(b[alignedTpacketHdrSize:alignedTpacketAllHdrSize], h.endian)
+		if err != nil {
+			logger.Errorf("error parsing sockaddr_ll: %v", err)
+			return nil, fmt.Errorf("error parsing sockaddr_ll for packet %d: %v", i, err)
+		}
+
+		ci := gopacket.CaptureInfo{
+			Length:         int(hdr.Len),
+			CaptureLength:  int(hdr.Snaplen),
+			Timestamp:      time.Unix(int64(hdr.Sec), int64(hdr.Nsec)),
+			InterfaceIndex: int(sall.Ifindex),
+		}
+		data := b[hdr.Mac : uint32(hdr.Mac)+hdr.Snaplen]
+		packets[i] = captured{
+			ci:   ci,
+			data: data,
+		}
+
+		logger.Debugf("raw packet for packet %d: %d\n ", i, data)
+	}
 
 	// indicate we are done with this frame, send back to the kernel
-	logger.Debugf("returning frame at pos %d to kernel", h.framePtr)
-	h.ring[h.framePtr] = syscall.TP_STATUS_KERNEL
+	logger.Debugf("returning block at pos %d to kernel", h.framePtr)
+	h.ring[blockBase+offsetToBlockStatus] = syscall.TP_STATUS_KERNEL
 
-	// Increment frame index, wrapping around if end of buffer is reached.
-	logger.Debugf("original frameIndex: %d", h.frameIndex)
-	h.frameIndex = (h.frameIndex + 1) % h.frameNumbers
-	logger.Debugf("updated frameIndex: %d", h.frameIndex)
-	// figure out which block has the next frame in the ring
-	bufferIndex := h.frameIndex / h.framesPerBuffer
-	logger.Debugf("calculated bufferIndex: %d", bufferIndex)
-	bufferIndex = bufferIndex * h.blockSize
-	logger.Debugf("re-calculated bufferIndex: %d", bufferIndex)
+	h.framePtr = (h.framePtr + 1) % h.blockNumbers
+	logger.Debugf("final block: %d", h.framePtr)
 
-	// find the the frame within that buffer
-	frameIndexDiff := h.frameIndex % h.framesPerBuffer
-	logger.Debugf("frameIndexDiff: %d", frameIndexDiff)
-	h.framePtr = int(bufferIndex + frameIndexDiff*h.frameSize)
-	logger.Debugf("h.frameSize %d, frameIndexDiff %d, frameIndexDiff*h.frameSize %d, bufferIndex %d", h.frameSize, frameIndexDiff, frameIndexDiff*h.frameSize, bufferIndex)
-	logger.Debugf("final framePtr: %d", h.framePtr)
-
-	return data, ci, nil
+	return packets, nil
 }
 
 // Close close sockets and release resources
@@ -212,7 +253,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	// because syscall package does not provide this
 	rall := syscall.RawSockaddrLinklayer{}
 	packetRALLSize = int32(unsafe.Sizeof(rall))
-	alignedTpacketHdrSize = tpacketAlign(syscall.SizeofTpacketHdr)
+	alignedTpacketHdrSize = tpacketAlign(syscall.SizeofTpacket3Hdr)
 	alignedTpacketRALLSize = tpacketAlign(packetRALLSize)
 	alignedTpacketAllHdrSize = alignedTpacketHdrSize + alignedTpacketRALLSize
 
@@ -258,13 +299,13 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		}
 	}
 	if !syscalls {
-		if err = syscall.SetsockoptInt(fd, syscall.SOL_PACKET, syscall.PACKET_VERSION, syscall.TPACKET_V1); err != nil {
-			logger.Errorf("failed to set TPACKET_V1: %v", err)
-			return nil, fmt.Errorf("failed to set TPACKET_V1: %v", err)
+		if err = syscall.SetsockoptInt(fd, syscall.SOL_PACKET, syscall.PACKET_VERSION, syscall.TPACKET_V3); err != nil {
+			logger.Errorf("failed to set TPACKET_V3: %v", err)
+			return nil, fmt.Errorf("failed to set TPACKET_V3: %v", err)
 		}
 		// set up the ring
 		var (
-			frameSize           = uint32(tpacketAlign(syscall.TPACKET_HDRLEN+EthHlen) + tpacketAlign(snaplen))
+			frameSize           = uint32(tpacketAlign(syscall.SizeofTpacket3Hdr+EthHlen) + tpacketAlign(snaplen))
 			pageSize            = syscall.Getpagesize()
 			blockSize           = uint32(pageSize)
 			blockNumbers uint32 = defaultBlockNumbers
@@ -280,30 +321,31 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		framesPerBuffer := blockSize / frameSize
 		frameNumbers := blockNumbers * framesPerBuffer
 
-		tpreq := syscall.TpacketReq{
+		tpreq := syscall.TpacketReq3{
 			Block_size: blockSize,
 			Block_nr:   blockNumbers,
 			Frame_size: frameSize,
 			Frame_nr:   frameNumbers,
 		}
 		logger.Debugf("creating mmap buffer with tpreq %#v", tpreq)
-		if err = syscall.SetsockoptTpacketReq(fd, syscall.SOL_PACKET, syscall.PACKET_RX_RING, &tpreq); err != nil {
+		if err = syscall.SetsockoptTpacketReq3(fd, syscall.SOL_PACKET, syscall.PACKET_RX_RING, &tpreq); err != nil {
 			logger.Errorf("failed to set tpacket req: %v", err)
 			return nil, fmt.Errorf("failed to set tpacket req: %v", err)
 		}
 		totalSize := int(tpreq.Block_size * tpreq.Block_nr)
-		var offset int64
-		data, err := syscall.Mmap(fd, offset, totalSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		data, err := syscall.Mmap(fd, 0, totalSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
 			logger.Errorf("error mmapping: %v", err)
 			return nil, fmt.Errorf("error mmapping: %v", err)
 		}
 		logger.Infof("mmap buffer created with size %d", len(data))
 		h.framesPerBuffer = framesPerBuffer
-		h.blockSize = blockSize
+		h.blockSize = int(blockSize)
 		h.frameSize = frameSize
 		h.frameNumbers = frameNumbers
+		h.blockNumbers = int(blockNumbers)
 		h.ring = data
+		h.cache = make([]captured, 0, blockSize/frameSize)
 	}
 	return &h, nil
 }
