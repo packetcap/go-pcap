@@ -76,7 +76,7 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 	// mmap can return multiple packets, so we can cache extras, and return if there are
 
 	// if there already was one in the cache, return it
-	if len(h.cache) > 1 {
+	if len(h.cache) > 0 {
 		cap := h.cache[0]
 		h.cache = h.cache[1:]
 		return cap.data, cap.ci, nil
