@@ -138,7 +138,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		// socket was ready, so read from the mmap now
 	}
 	// read the header
-	logger.Debugf("reading block header from position %d to position %d", blockBase, blockBase+h.blockSize)
+	logger.Debugf("reading block header into b slice from position %d to position %d", blockBase, blockBase+h.blockSize)
 	b := h.ring[blockBase : blockBase+h.blockSize]
 	buf := bytes.NewBuffer(b[:])
 	bHdr := blockHeader{}
@@ -155,8 +155,10 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	nextOffset := bHdr.H1.Offset_to_first_pkt
 	for i := 0; i < numPkts; i++ {
 		hdr := syscall.Tpacket3Hdr{}
+		logger.Debugf("packet number %d/%d at position %d in block", i, numPkts, nextOffset)
 		b = b[nextOffset:]
 		buf := bytes.NewBuffer(b[:alignedTpacketHdrSize])
+		logger.Debugf("binary parsing packet header of size %d", buf.Len())
 		if err := binary.Read(buf, h.endian, &hdr); err != nil {
 			msg := fmt.Sprintf("error reading tpacket3 header on byte %d: %v", i, err)
 			logger.Errorf(msg)
@@ -164,6 +166,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		}
 		logger.Debugf("tpacket3 header %#v", hdr)
 		nextOffset = hdr.Next_offset
+		logger.Debugf("setting next offset to %d", nextOffset)
 
 		// read the sockaddr_ll
 		// unfortunately, we cannot do binary.Read() because syscall.SockaddrLinklayer has an embedded slice
