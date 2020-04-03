@@ -53,6 +53,7 @@ type Handle struct {
 	syscalls        bool
 	promiscuous     bool
 	index           int
+	iface           string
 	snaplen         int32
 	fd              int
 	ring            []byte
@@ -118,6 +119,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	logger := log.WithFields(log.Fields{
 		"func":   "readPacketDataMmap",
 		"method": "mmap",
+		"iface":  h.iface,
 	})
 	logger.Debugf("started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d", h.framesPerBuffer, h.blockSize, h.frameSize, h.frameNumbers, h.blockNumbers)
 	// we check the bit setting on the pointer
@@ -252,6 +254,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	h := Handle{
 		snaplen:  snaplen,
 		syscalls: syscalls,
+		iface:    iface,
 	}
 	// we need to know our endianness
 	endianness, err := getEndianness()
