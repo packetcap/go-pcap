@@ -122,10 +122,10 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	logger.Debugf("started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d", h.framesPerBuffer, h.blockSize, h.frameSize, h.frameNumbers, h.blockNumbers)
 	// we check the bit setting on the pointer
 	blockBase := h.framePtr * h.blockSize
-	logger.Debugf("checking for packet at block %d, buffer position %d", h.framePtr, blockBase)
 	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
 	flagIndex := blockBase + offsetToBlockStatus
 	for {
+		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d", h.framePtr, blockBase, flagIndex)
 		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
 			break
 		}
