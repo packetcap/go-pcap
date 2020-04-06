@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"time"
 	"unsafe"
@@ -50,6 +51,7 @@ type captured struct {
 }
 
 type Handle struct {
+	isOpen          bool
 	syscalls        bool
 	promiscuous     bool
 	index           int
@@ -71,6 +73,9 @@ type Handle struct {
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
+	if !h.isOpen {
+		return data, ci, io.EOF
+	}
 	if h.syscalls {
 		return h.readPacketDataSyscall()
 	}
@@ -127,22 +132,30 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
 	flagIndex := blockBase + offsetToBlockStatus
 	for {
-		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d", h.framePtr, blockBase, flagIndex)
+		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d ring pointer %p", h.framePtr, blockBase, flagIndex, h.ring)
 		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
 			break
 		}
 		logger.Debugf("packet not ready at block %d position %d, polling via %#v", h.framePtr, blockBase, h.pollfd)
 		val, err := syscall.Poll(h.pollfd, -1)
-		logger.Debug("poll returned")
-		if err != nil {
+		logger.Debugf("poll returned val %v with pollfd %#v", val, h.pollfd)
+
+		switch {
+		case err != nil:
 			logger.Errorf("error polling socket: %v", err)
 			return nil, fmt.Errorf("error polling socket: %v", err)
-		}
-		if val == -1 {
+		case val < 0:
 			logger.Error("negative return value from polling socket")
 			return nil, errors.New("negative return value from polling socket")
+		case h.pollfd[0].Revents&syscall.POLLIN == syscall.POLLIN:
+			continue
+		case h.pollfd[0].Revents&syscall.POLLERR == syscall.POLLERR:
+			logger.Error("unknown error returned from socket")
+			return nil, errors.New("unknown error returned from socket")
+		case h.pollfd[0].Revents&syscall.POLLNVAL == syscall.POLLNVAL:
+			logger.Error("socket closed")
+			return nil, io.EOF
 		}
-		// if we got here, the poll() returned, but we still should check the packet flag, so continue the loop
 	}
 	// read the header
 	logger.Debugf("reading block header into b slice from position %d to position %d", blockBase, blockBase+h.blockSize)
@@ -212,10 +225,19 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 
 // Close close sockets and release resources
 func (h *Handle) Close() {
-	// close the socket
-	_ = syscall.Close(h.fd)
+	logger := log.WithFields(log.Fields{
+		"func":  "close",
+		"iface": h.iface,
+	})
+	h.isOpen = false
 	if h.ring != nil {
-		_ = syscall.Munmap(h.ring)
+		if err := syscall.Munmap(h.ring); err != nil {
+			logger.Errorf("error unmapping mmap at %p ; nothing to do", h.ring)
+		}
+	}
+	// close the socket
+	if err := syscall.Close(h.fd); err != nil {
+		logger.Errorf("error closing file descriptor %d ; nothing to do", h.fd)
 	}
 }
 
@@ -351,7 +373,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 			logger.Errorf("error mmapping: %v", err)
 			return nil, fmt.Errorf("error mmapping: %v", err)
 		}
-		logger.Infof("mmap buffer created with size %d", len(data))
+		logger.Infof("mmap buffer created at %p with size %d", data, len(data))
 		h.framesPerBuffer = framesPerBuffer
 		h.blockSize = int(blockSize)
 		h.frameSize = frameSize
@@ -360,6 +382,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		h.ring = data
 		h.cache = make([]captured, 0, blockSize/frameSize)
 	}
+	h.isOpen = true
 	return &h, nil
 }
 
