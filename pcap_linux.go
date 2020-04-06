@@ -310,6 +310,11 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 			logger.Errorf("unknown interface %s: %v", iface, err)
 			return nil, fmt.Errorf("unknown interface %s: %v", iface, err)
 		}
+		// check the interface is up
+		if in.Flags&net.FlagUp != net.FlagUp {
+			logger.Errorf("interface %s is not up", iface)
+			return nil, fmt.Errorf("interface %s is not up", iface)
+		}
 		h.index = in.Index
 
 		// create the sockaddr_ll
