@@ -141,6 +141,9 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		logger.Debugf("poll returned val %v with pollfd %#v", val, h.pollfd)
 
 		switch {
+		case err != nil && err == syscall.EINTR:
+			logger.Debug("poll returned with EINTR, continuing")
+			continue
 		case err != nil:
 			logger.Errorf("error polling socket: %v", err)
 			return nil, fmt.Errorf("error polling socket: %v", err)
@@ -150,6 +153,19 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		case h.pollfd[0].Revents&syscall.POLLIN == syscall.POLLIN:
 			continue
 		case h.pollfd[0].Revents&syscall.POLLERR == syscall.POLLERR:
+			// unknown error; we need to check the socket itself to find out
+			logger.Debug("received POLLERR, checking actual error from socket")
+			sockOptVal, err := syscall.GetsockoptInt(h.fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+			if err != nil {
+				logger.Errorf("could not get sockopt to check poll error; sockopt error: %v", err)
+				return nil, fmt.Errorf("could not get sockopt to check poll error; sockopt error: %v", err)
+			}
+			if sockOptVal == int(syscall.ENETDOWN) {
+				logger.Errorf("interface %s is down, marking as closed and returning", h.iface)
+				h.isOpen = false
+				return nil, nil
+			}
+			// we have no idea what it was, so just return
 			logger.Error("unknown error returned from socket")
 			return nil, errors.New("unknown error returned from socket")
 		case h.pollfd[0].Revents&syscall.POLLNVAL == syscall.POLLNVAL:
