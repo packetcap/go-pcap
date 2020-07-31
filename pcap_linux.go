@@ -75,7 +75,7 @@ type Handle struct {
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	if h.isOpen > 0 {
+	if atomic.LoadUint32(&h.isOpen) > 0 {
 		return data, ci, io.EOF
 	}
 	if h.syscalls {
@@ -163,7 +163,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			}
 			if sockOptVal == int(syscall.ENETDOWN) {
 				logger.Errorf("interface %s is down, marking as closed and returning", h.iface)
-				h.isOpen = 1
+				atomic.StoreUint32(&h.isOpen, 1)
 				return nil, nil
 			}
 			// we have no idea what it was, so just return
@@ -171,7 +171,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return nil, errors.New("unknown error returned from socket")
 		case h.pollfd[0].Revents&syscall.POLLNVAL == syscall.POLLNVAL:
 			logger.Error("socket closed")
-			h.isOpen = 1
+			atomic.StoreUint32(&h.isOpen, 1)
 			return nil, io.EOF
 		}
 	}
@@ -255,8 +255,6 @@ func (h *Handle) Close() {
 	logger := log.WithFields(log.Fields{
 		"iface": h.iface,
 	})
-	// this is the only call to set isOpen that happens when a different
-	// goroutine might be running, so we wrap it
 	atomic.StoreUint32(&h.isOpen, 1)
 	if h.ring != nil {
 		if err := syscall.Munmap(h.ring); err != nil {
@@ -416,7 +414,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		h.ring = data
 		h.cache = make([]captured, 0, blockSize/frameSize)
 	}
-	h.isOpen = 0
+	atomic.StoreUint32(&h.isOpen, 0)
 	return &h, nil
 }
 
