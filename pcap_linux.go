@@ -132,6 +132,9 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	flagIndex := blockBase + offsetToBlockStatus
 	for {
 		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d ring pointer %p", h.framePtr, blockBase, flagIndex, h.ring)
+		if !h.isOpen {
+			return nil, io.EOF
+		}
 		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
 			break
 		}
@@ -169,6 +172,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return nil, errors.New("unknown error returned from socket")
 		case h.pollfd[0].Revents&syscall.POLLNVAL == syscall.POLLNVAL:
 			logger.Error("socket closed")
+			h.isOpen = false
 			return nil, io.EOF
 		}
 	}
