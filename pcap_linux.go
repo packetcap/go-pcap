@@ -136,7 +136,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return nil, io.EOF
 		}
 		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
-			break
+			return h.processMmapPackets(blockBase, flagIndex)
 		}
 		logger.Debugf("packet not ready at block %d position %d, polling via %#v", h.framePtr, blockBase, h.pollfd)
 		val, err := syscall.Poll(h.pollfd, -1)
@@ -176,6 +176,13 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return nil, io.EOF
 		}
 	}
+}
+
+func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error) {
+	logger := log.WithFields(log.Fields{
+		"method": "mmap-process",
+		"iface":  h.iface,
+	})
 	// read the header
 	logger.Debugf("reading block header into b slice from position %d to position %d", blockBase, blockBase+h.blockSize)
 	b := h.ring[blockBase : blockBase+h.blockSize]
