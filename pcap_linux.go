@@ -75,7 +75,7 @@ type Handle struct {
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	if atomic.LoadUint32(&h.isOpen) > 0 {
+	if atomic.LoadUint32(&h.isOpen) == 0 {
 		return data, ci, io.EOF
 	}
 	if h.syscalls {
@@ -132,7 +132,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	blockBase := h.framePtr * h.blockSize
 	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
 	flagIndex := blockBase + offsetToBlockStatus
-	for atomic.LoadUint32(&h.isOpen) == 0 {
+	for atomic.LoadUint32(&h.isOpen) > 0 {
 		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d ring pointer %p", h.framePtr, blockBase, flagIndex, h.ring)
 		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
 			return h.processMmapPackets(blockBase, flagIndex)
@@ -163,7 +163,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			}
 			if sockOptVal == int(syscall.ENETDOWN) {
 				logger.Errorf("interface %s is down, marking as closed and returning", h.iface)
-				atomic.StoreUint32(&h.isOpen, 1)
+				atomic.StoreUint32(&h.isOpen, 0)
 				return nil, nil
 			}
 			// we have no idea what it was, so just return
@@ -171,7 +171,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return nil, errors.New("unknown error returned from socket")
 		case h.pollfd[0].Revents&syscall.POLLNVAL == syscall.POLLNVAL:
 			logger.Error("socket closed")
-			atomic.StoreUint32(&h.isOpen, 1)
+			atomic.StoreUint32(&h.isOpen, 0)
 			return nil, io.EOF
 		}
 	}
@@ -255,7 +255,7 @@ func (h *Handle) Close() {
 	logger := log.WithFields(log.Fields{
 		"iface": h.iface,
 	})
-	atomic.StoreUint32(&h.isOpen, 1)
+	atomic.StoreUint32(&h.isOpen, 0)
 	if h.ring != nil {
 		if err := syscall.Munmap(h.ring); err != nil {
 			logger.Errorf("error unmapping mmap at %p ; nothing to do", h.ring)
@@ -300,7 +300,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	logger.Debug("started")
 	h := Handle{
 		// we start with it not open
-		isOpen:   1,
+		isOpen:   0,
 		snaplen:  snaplen,
 		syscalls: syscalls,
 		iface:    iface,
@@ -414,7 +414,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		h.ring = data
 		h.cache = make([]captured, 0, blockSize/frameSize)
 	}
-	atomic.StoreUint32(&h.isOpen, 0)
+	atomic.StoreUint32(&h.isOpen, 1)
 	return &h, nil
 }
 
