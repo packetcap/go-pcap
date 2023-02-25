@@ -11,13 +11,13 @@ type Handler interface {
 	serveDNS(*udpConnection, *layers.DNS)
 }
 
-//DNSServer is the contains the runtime information
+// DNSServer is the contains the runtime information
 type DNSServer struct {
 	port    int
 	handler Handler
 }
 
-//NewDNSServer - Creates new DNSServer
+// NewDNSServer - Creates new DNSServer
 func NewDNSServer(port int, records map[string]map[string]string) *DNSServer {
 	return &DNSServer{
 		port: port,
@@ -46,7 +46,7 @@ func (srv *serveMux) serveDNS(u *udpConnection, request *layers.DNS) {
 	respond(u, request, request.Questions[0].Type, response)
 }
 
-//StartToServe - creates a UDP connection and uses the connection to serve DNS
+// StartToServe - creates a UDP connection and uses the connection to serve DNS
 func (dns *DNSServer) StartAndServe() string {
 	addr := net.UDPAddr{
 		Port: dns.port,
@@ -71,8 +71,10 @@ func (dns *DNSServer) serve(u *udpConnection) {
 	}
 }
 
+// nolint: unused
 type handlerConvert func(*udpConnection, *layers.DNS)
 
+// nolint: unused
 func (f handlerConvert) serveDNS(w *udpConnection, r *layers.DNS) {
 	f(w, r)
 }
@@ -83,7 +85,7 @@ type udpConnection struct {
 }
 
 func (udp *udpConnection) Write(b []byte) error {
-	udp.conn.WriteTo(b, udp.addr)
+	_, _ = udp.conn.WriteTo(b, udp.addr)
 	return nil
 }
 
@@ -111,5 +113,5 @@ func respond(w *udpConnection, r *layers.DNS, answerType layers.DNSType, ip stri
 	if err != nil {
 		panic(err)
 	}
-	w.Write(buf.Bytes())
+	_ = w.Write(buf.Bytes())
 }
