@@ -21,7 +21,7 @@ var (
 )
 
 func main() {
-	rootCmd.Execute()
+	_ = rootCmd.Execute()
 }
 
 var rootCmd = &cobra.Command{

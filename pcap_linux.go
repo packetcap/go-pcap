@@ -20,11 +20,11 @@ import (
 
 const (
 	//defaultFrameSize = 4096
-	defaultFrameSize = 65632
+	defaultFrameSize = 65632 //nolint:unused
 	//defaultBlockNumbers = 128
 	defaultBlockNumbers = 32
 	//defaultBlockSize = defaultFrameSize * defaultBlockNumbers
-	defaultBlockSize = 131072
+	defaultBlockSize = 131072 //nolint:unused
 	//defaultFramesPerBlock = defaultBlockSize / defaultFrameSize
 	defaultFramesPerBlock = 32
 	EthHlen               = 0x10
@@ -63,7 +63,7 @@ type Handle struct {
 	ring            []byte
 	framePtr        int
 	framesPerBuffer uint32
-	frameIndex      uint32
+	frameIndex      uint32 //nolint:unused
 	frameSize       uint32
 	frameNumbers    uint32
 	blockNumbers    int
