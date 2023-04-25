@@ -31,6 +31,8 @@ const (
 	// defaultSyscalls default setting for using syscalls
 	defaultSyscalls     = false
 	offsetToBlockStatus = 4 + 4
+
+	tpacketAuxdataSize = 20
 )
 
 var (
@@ -108,15 +110,40 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	b := make([]byte, h.snaplen)
-	read, _, err := syscall.Recvfrom(h.fd, b, 0)
+	oob := make([]byte, syscall.CmsgSpace(tpacketAuxdataSize))
+	n, _, _, _, err := syscall.Recvmsg(h.fd, b, oob, 0)
 	if err != nil {
-		return nil, ci, fmt.Errorf("error reading: %v", err)
+		return nil, ci, fmt.Errorf("error reading packets: %w", err)
+	}
+
+	var auxData syscall.TpacketAuxdata
+	cmsgs, err := syscall.ParseSocketControlMessage(oob)
+	if err != nil {
+		return nil, ci, fmt.Errorf("error reading socket control messages: %w", err)
+	}
+	for _, cmsg := range cmsgs {
+		if cmsg.Header.Level == syscall.SOL_PACKET && cmsg.Header.Type == syscall.PACKET_AUXDATA && cmsg.Header.Len >= tpacketAuxdataSize {
+			auxData.Vlan_tci = binary.BigEndian.Uint16(cmsg.Data[len(cmsg.Data)-5 : len(cmsg.Data)-3])
+			auxData.Vlan_tpid = binary.BigEndian.Uint16(cmsg.Data[len(cmsg.Data)-3:])
+			break
+		}
+	}
+	if auxData.Vlan_tci != 0 {
+		if auxData.Vlan_tpid == 0 {
+			auxData.Vlan_tpid = binary.BigEndian.Uint16(b[12:14])
+			binary.BigEndian.PutUint16(b[12:14], 0x8100) // set ethernet frame type to VLAN
+		}
+		aux := make([]byte, 4)
+		binary.BigEndian.PutUint16(aux[:2], auxData.Vlan_tci)
+		binary.BigEndian.PutUint16(aux[2:], auxData.Vlan_tpid)
+		b = append(append(b[:14], aux...), b[14:]...)
+		n = n + 4
 	}
 	// TODO: add CaptureInfo, specifically:
 	//    capture timestamp
 	//    original packet length
 	ci = gopacket.CaptureInfo{
-		CaptureLength:  read,
+		CaptureLength:  n,
 		InterfaceIndex: h.index,
 	}
 	return b, ci, nil
@@ -329,6 +356,9 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	h.pollfd = []syscall.PollFd{{Fd: int32(h.fd), Events: syscall.POLLIN}}
 	if err := syscall.SetNonblock(fd, false); err != nil {
 		return nil, fmt.Errorf("failed to set socket as blocking: %v", err)
+	}
+	if err = syscall.SetsockoptInt(fd, syscall.SOL_PACKET, syscall.PACKET_AUXDATA, 1); err != nil {
+		return nil, fmt.Errorf("failed to set packet auxilary data: %w", err)
 	}
 	if iface != "" {
 		// get our interface
