@@ -108,6 +108,17 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 	return cap.data, cap.ci, nil
 }
 
+func writeVLANTag(data []byte, tci, tpid uint16) ([]byte, []byte) {
+	buf := make([]byte, 4)
+	if tpid == 0 || binary.BigEndian.Uint16(data[12:14]) != 0x8100 {
+		tpid = binary.BigEndian.Uint16(data[12:14])
+		binary.BigEndian.PutUint16(data[12:14], 0x8100) // set ethernet frame type to VLAN
+	}
+	binary.BigEndian.PutUint16(buf[:2], tci)
+	binary.BigEndian.PutUint16(buf[2:], tpid)
+	return data, buf
+}
+
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	b := make([]byte, h.snaplen)
 	oob := make([]byte, syscall.CmsgSpace(tpacketAuxdataSize))
@@ -129,13 +140,8 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 		}
 	}
 	if auxData.Vlan_tci != 0 {
-		if auxData.Vlan_tpid == 0 {
-			auxData.Vlan_tpid = binary.BigEndian.Uint16(b[12:14])
-			binary.BigEndian.PutUint16(b[12:14], 0x8100) // set ethernet frame type to VLAN
-		}
-		aux := make([]byte, 4)
-		binary.BigEndian.PutUint16(aux[:2], auxData.Vlan_tci)
-		binary.BigEndian.PutUint16(aux[2:], auxData.Vlan_tpid)
+		var aux []byte
+		b, aux = writeVLANTag(b, auxData.Vlan_tci, auxData.Vlan_tpid)
 		b = append(append(b[:14], aux...), b[14:]...)
 		n = n + 4
 	}
@@ -154,7 +160,14 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		"method": "mmap",
 		"iface":  h.iface,
 	})
-	logger.Debugf("started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d", h.framesPerBuffer, h.blockSize, h.frameSize, h.frameNumbers, h.blockNumbers)
+	logger.Debugf(
+		"started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d",
+		h.framesPerBuffer,
+		h.blockSize,
+		h.frameSize,
+		h.frameNumbers,
+		h.blockNumbers,
+	)
 	// we check the bit setting on the pointer
 	blockBase := h.framePtr * h.blockSize
 	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
@@ -259,6 +272,11 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 			InterfaceIndex: int(sall.Ifindex),
 		}
 		data := b[hdr.Mac : uint32(hdr.Mac)+hdr.Snaplen]
+		if hdr.Hv1.Vlan_tci != 0 {
+			var vlanTag []byte
+			data, vlanTag = writeVLANTag(data, uint16(hdr.Hv1.Vlan_tci), uint16(hdr.Hv1.Vlan_tpid))
+			data = append(data[:14], append(vlanTag, data[14:]...)...)
+		}
 		packets[i] = captured{
 			ci:   ci,
 			data: data,
