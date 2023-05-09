@@ -31,6 +31,8 @@ const (
 	// defaultSyscalls default setting for using syscalls
 	defaultSyscalls     = false
 	offsetToBlockStatus = 4 + 4
+
+	tpacketAuxdataSize = 20
 )
 
 var (
@@ -106,17 +108,48 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 	return cap.data, cap.ci, nil
 }
 
+func writeVLANTag(data []byte, tci, tpid uint16) ([]byte, []byte) {
+	buf := make([]byte, 4)
+	if tpid == 0 || binary.BigEndian.Uint16(data[12:14]) != 0x8100 {
+		tpid = binary.BigEndian.Uint16(data[12:14])
+		binary.BigEndian.PutUint16(data[12:14], 0x8100) // set ethernet frame type to VLAN
+	}
+	binary.BigEndian.PutUint16(buf[:2], tci)
+	binary.BigEndian.PutUint16(buf[2:], tpid)
+	return data, buf
+}
+
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	b := make([]byte, h.snaplen)
-	read, _, err := syscall.Recvfrom(h.fd, b, 0)
+	oob := make([]byte, syscall.CmsgSpace(tpacketAuxdataSize))
+	n, _, _, _, err := syscall.Recvmsg(h.fd, b, oob, 0)
 	if err != nil {
-		return nil, ci, fmt.Errorf("error reading: %v", err)
+		return nil, ci, fmt.Errorf("error reading packets: %w", err)
+	}
+
+	var auxData syscall.TpacketAuxdata
+	cmsgs, err := syscall.ParseSocketControlMessage(oob)
+	if err != nil {
+		return nil, ci, fmt.Errorf("error reading socket control messages: %w", err)
+	}
+	for _, cmsg := range cmsgs {
+		if cmsg.Header.Level == syscall.SOL_PACKET && cmsg.Header.Type == syscall.PACKET_AUXDATA && cmsg.Header.Len >= tpacketAuxdataSize {
+			auxData.Vlan_tci = binary.BigEndian.Uint16(cmsg.Data[len(cmsg.Data)-5 : len(cmsg.Data)-3])
+			auxData.Vlan_tpid = binary.BigEndian.Uint16(cmsg.Data[len(cmsg.Data)-3:])
+			break
+		}
+	}
+	if auxData.Vlan_tci != 0 {
+		var aux []byte
+		b, aux = writeVLANTag(b, auxData.Vlan_tci, auxData.Vlan_tpid)
+		b = append(append(b[:14], aux...), b[14:]...)
+		n = n + 4
 	}
 	// TODO: add CaptureInfo, specifically:
 	//    capture timestamp
 	//    original packet length
 	ci = gopacket.CaptureInfo{
-		CaptureLength:  read,
+		CaptureLength:  n,
 		InterfaceIndex: h.index,
 	}
 	return b, ci, nil
@@ -127,7 +160,14 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		"method": "mmap",
 		"iface":  h.iface,
 	})
-	logger.Debugf("started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d", h.framesPerBuffer, h.blockSize, h.frameSize, h.frameNumbers, h.blockNumbers)
+	logger.Debugf(
+		"started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d",
+		h.framesPerBuffer,
+		h.blockSize,
+		h.frameSize,
+		h.frameNumbers,
+		h.blockNumbers,
+	)
 	// we check the bit setting on the pointer
 	blockBase := h.framePtr * h.blockSize
 	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
@@ -232,6 +272,11 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 			InterfaceIndex: int(sall.Ifindex),
 		}
 		data := b[hdr.Mac : uint32(hdr.Mac)+hdr.Snaplen]
+		if hdr.Hv1.Vlan_tci != 0 {
+			var vlanTag []byte
+			data, vlanTag = writeVLANTag(data, uint16(hdr.Hv1.Vlan_tci), uint16(hdr.Hv1.Vlan_tpid))
+			data = append(data[:14], append(vlanTag, data[14:]...)...)
+		}
 		packets[i] = captured{
 			ci:   ci,
 			data: data,
@@ -329,6 +374,9 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	h.pollfd = []syscall.PollFd{{Fd: int32(h.fd), Events: syscall.POLLIN}}
 	if err := syscall.SetNonblock(fd, false); err != nil {
 		return nil, fmt.Errorf("failed to set socket as blocking: %v", err)
+	}
+	if err = syscall.SetsockoptInt(fd, syscall.SOL_PACKET, syscall.PACKET_AUXDATA, 1); err != nil {
+		return nil, fmt.Errorf("failed to set packet auxilary data: %w", err)
 	}
 	if iface != "" {
 		// get our interface
