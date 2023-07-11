@@ -53,9 +53,28 @@ type captured struct {
 	ci   gopacket.CaptureInfo
 }
 
+// Handle states
+// Writer (OpenLive + Close) transitions:
+//   - closed <-> open
+//   - reading -> canceling
+//   - canceled / gone -> closed
+//
+// Reader (ReadPacketData) transitions:
+//   - open <-> reading
+//   - reading -> gone
+//   - canceling -> canceled
+const (
+	closed    uint32 = 0
+	open      uint32 = 1
+	reading   uint32 = 2
+	canceling uint32 = 3
+	canceled  uint32 = 4
+	gone      uint32 = 5
+)
+
 type Handle struct {
 	// this must be first for atomic to behave nicely
-	isOpen          uint32
+	state           uint32
 	syscalls        bool
 	promiscuous     bool
 	index           int
@@ -77,9 +96,19 @@ type Handle struct {
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	if atomic.LoadUint32(&h.isOpen) == 0 {
+	if !atomic.CompareAndSwapUint32(&h.state, open, reading) {
 		return data, ci, io.EOF
 	}
+	defer func() {
+		if !atomic.CompareAndSwapUint32(&h.state, reading, open) {
+			if atomic.CompareAndSwapUint32(&h.state, canceling, canceled) {
+				logger := log.WithFields(log.Fields{
+					"iface": h.iface,
+				})
+				logger.Debugf("packet read was canceled")
+			}
+		}
+	}()
 	if h.syscalls {
 		return h.readPacketDataSyscall()
 	}
@@ -172,7 +201,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	blockBase := h.framePtr * h.blockSize
 	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
 	flagIndex := blockBase + offsetToBlockStatus
-	for atomic.LoadUint32(&h.isOpen) > 0 {
+	for atomic.LoadUint32(&h.state) == reading {
 		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d ring pointer %p", h.framePtr, blockBase, flagIndex, h.ring)
 		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
 			return h.processMmapPackets(blockBase, flagIndex)
@@ -202,8 +231,8 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 				return nil, fmt.Errorf("could not get sockopt to check poll error; sockopt error: %v", err)
 			}
 			if sockOptVal == int(syscall.ENETDOWN) {
-				logger.Errorf("interface %s is down, marking as closed and returning", h.iface)
-				atomic.StoreUint32(&h.isOpen, 0)
+				logger.Errorf("interface %s is down, marking handle as gone and returning", h.iface)
+				atomic.StoreUint32(&h.state, gone)
 				return nil, nil
 			}
 			// we have no idea what it was, so just return
@@ -211,7 +240,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return nil, errors.New("unknown error returned from socket")
 		case h.pollfd[0].Revents&syscall.POLLNVAL == syscall.POLLNVAL:
 			logger.Error("socket closed")
-			atomic.StoreUint32(&h.isOpen, 0)
+			atomic.StoreUint32(&h.state, gone)
 			return nil, io.EOF
 		}
 	}
@@ -300,7 +329,16 @@ func (h *Handle) Close() {
 	logger := log.WithFields(log.Fields{
 		"iface": h.iface,
 	})
-	atomic.StoreUint32(&h.isOpen, 0)
+	for !atomic.CompareAndSwapUint32(&h.state, open, closed) {
+		state := atomic.LoadUint32(&h.state)
+		if state == canceled || state == gone {
+			atomic.StoreUint32(&h.state, closed)
+			break
+		}
+		if atomic.CompareAndSwapUint32(&h.state, reading, canceling) {
+			logger.Debugf("cancelling ongoig packet read")
+		}
+	}
 	if h.ring != nil {
 		if err := syscall.Munmap(h.ring); err != nil {
 			logger.Errorf("error unmapping mmap at %p ; nothing to do", h.ring)
@@ -345,7 +383,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	logger.Debug("started")
 	h := Handle{
 		// we start with it not open
-		isOpen:   0,
+		state:    closed,
 		snaplen:  snaplen,
 		syscalls: syscalls,
 		iface:    iface,
@@ -462,7 +500,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		h.ring = data
 		h.cache = make([]captured, 0, blockSize/frameSize)
 	}
-	atomic.StoreUint32(&h.isOpen, 1)
+	atomic.StoreUint32(&h.state, open)
 	return &h, nil
 }
 
