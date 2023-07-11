@@ -300,7 +300,16 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 			Timestamp:      time.Unix(int64(hdr.Sec), int64(hdr.Nsec)),
 			InterfaceIndex: int(sall.Ifindex),
 		}
-		data := b[hdr.Mac : uint32(hdr.Mac)+hdr.Snaplen]
+		// We need to copy packet data because as soon as ReadPacketData returns,
+		// the ring buffer could be un-mapped by Close. If the caller of ReadPacketData
+		// does not process packet data quickly enough and a call to Handle.Close()
+		// interleaves, it could find itself reading from invalid memory segments.
+		// If you are using go-pcap with google/gopacket, it is better to have packet
+		// data copied here and then enable NoCopy for PacketSource, i.e.:
+		//   packetSource := gopacket.NewPacketSource(...)
+		//   packetSource.NoCopy = true
+		data := make([]byte, hdr.Snaplen)
+		copy(data, b[hdr.Mac:uint32(hdr.Mac)+hdr.Snaplen])
 		if hdr.Hv1.Vlan_tci != 0 {
 			var vlanTag []byte
 			data, vlanTag = writeVLANTag(data, uint16(hdr.Hv1.Vlan_tci), uint16(hdr.Hv1.Vlan_tpid))
