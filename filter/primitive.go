@@ -390,8 +390,15 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 		}
 	}
 
-	inst.append(returnKeep)
-	inst.append(returnDrop)
+	if p.negator {
+		// Add the instruction to accept packets that did not match the original condition
+		inst.append(returnDrop)
+		inst.append(returnKeep)
+	} else {
+		inst.append(returnKeep)
+		inst.append(returnDrop)
+	}
+
 	return inst.inst, nil
 }
 
