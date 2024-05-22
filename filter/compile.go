@@ -169,7 +169,7 @@ func checkIP4NetAddresses(direction filterDirection, addr string, ip bool, fail,
 	}
 	var maskCheck *bpf.ALUOpConstant
 	if !bytes.Equal(network.Mask, ip4MaskFull) {
-		maskCheck = &bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: binary.BigEndian.Uint32(network.Mask)}
+		maskCheck = &bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: binary.BigEndian.Uint32(network.Mask)}
 	}
 	loadSource, loadDestination := loadIPv4SourceAddress, loadIPv4DestinationAddress
 	if !ip {
@@ -400,7 +400,7 @@ func loadAndCompareIPv6Address(addr [4]uint32, mask net.IPMask, source bool, ski
 			maskStart := wholeWords * 4
 			maskTerm := binary.BigEndian.Uint32(mask[maskStart : maskStart+4])
 			if maskTerm != 0xffffffff {
-				maskInst = bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: maskTerm}
+				maskInst = bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: maskTerm}
 				size++
 			}
 		}
