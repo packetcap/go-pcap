@@ -1134,19 +1134,19 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			// next section checks ipv4
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 6},
 			bpf.LoadAbsolute{Off: 26, Size: 4},                   // ip4 src address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 11},
 			bpf.LoadAbsolute{Off: 30, Size: 4},                   // ip4 dst address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 8, SkipFalse: 9},
 			// next section checks arp or rarp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0806, SkipTrue: 1},  // arp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x8035, SkipFalse: 7}, // rarp
 			bpf.LoadAbsolute{Off: 28, Size: 4},                         // arp src address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00},       // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00},       // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 3},
 			bpf.LoadAbsolute{Off: 38, Size: 4},                   // arp dst address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1182,13 +1182,13 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			// next section checks ipv4
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 3},
 			bpf.LoadAbsolute{Off: 26, Size: 4},                   // ip4 src address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 5, SkipFalse: 6},
 			// next section checks arp or rarp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0806, SkipTrue: 1},  // arp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x8035, SkipFalse: 4}, // rarp
 			bpf.LoadAbsolute{Off: 28, Size: 4},                         // arp src address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00},       // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00},       // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1218,13 +1218,13 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			// next section checks ipv4
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 3},
 			bpf.LoadAbsolute{Off: 30, Size: 4},                   // ip4 dst address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 5, SkipFalse: 6},
 			// next section checks arp or rarp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0806, SkipTrue: 1},  // arp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x8035, SkipFalse: 4}, // rarp
 			bpf.LoadAbsolute{Off: 38, Size: 4},                         // arp dst address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00},       // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00},       // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1254,19 +1254,19 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			// next section checks ipv4
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 6},
 			bpf.LoadAbsolute{Off: 26, Size: 4},                   // ip4 src address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipFalse: 12},
 			bpf.LoadAbsolute{Off: 30, Size: 4},                   // ip4 dst address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 8, SkipFalse: 9},
 			// next section checks arp or rarp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0806, SkipTrue: 1},  // arp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x8035, SkipFalse: 7}, // rarp
 			bpf.LoadAbsolute{Off: 28, Size: 4},                         // arp src address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00},       // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00},       // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipFalse: 4},
 			bpf.LoadAbsolute{Off: 38, Size: 4},                   // arp dst address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1302,19 +1302,19 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			// next section checks ipv4
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 6},
 			bpf.LoadAbsolute{Off: 26, Size: 4},                   // ip4 src address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 11},
 			bpf.LoadAbsolute{Off: 30, Size: 4},                   // ip4 dst address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 8, SkipFalse: 9},
 			// next section checks arp or rarp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0806, SkipTrue: 1},  // arp
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x8035, SkipFalse: 7}, // rarp
 			bpf.LoadAbsolute{Off: 28, Size: 4},                         // arp src address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00},       // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00},       // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipTrue: 3},
 			bpf.LoadAbsolute{Off: 38, Size: 4},                   // arp dst address
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xffffff00}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xc0a80000, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1456,12 +1456,12 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			bpf.LoadAbsolute{Off: 22, Size: 4}, // ip6 src address part1
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2a001450, SkipFalse: 3},
 			bpf.LoadAbsolute{Off: 26, Size: 4},                   // ip6 src address part2
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xfffffffc}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffffffc}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40010824, SkipTrue: 5},
 			bpf.LoadAbsolute{Off: 38, Size: 4}, // ip6 dst address part1
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2a001450, SkipFalse: 4},
 			bpf.LoadAbsolute{Off: 42, Size: 4},                   // ip6 dst address part2
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xfffffffc}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffffffc}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40010824, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1492,7 +1492,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			bpf.LoadAbsolute{Off: 22, Size: 4}, // ip6 src address part1
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2a001450, SkipFalse: 4},
 			bpf.LoadAbsolute{Off: 26, Size: 4},                   // ip6 src address part2
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xfffffffc}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffffffc}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40010824, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1518,7 +1518,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			bpf.LoadAbsolute{Off: 38, Size: 4}, // ip6 dst address part1
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2a001450, SkipFalse: 4},
 			bpf.LoadAbsolute{Off: 42, Size: 4},                   // ip6 dst address part2
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xfffffffc}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffffffc}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40010824, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1544,12 +1544,12 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			bpf.LoadAbsolute{Off: 22, Size: 4}, // ip6 src address part1
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2a001450, SkipFalse: 9},
 			bpf.LoadAbsolute{Off: 26, Size: 4},                   // ip6 src address part2
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xfffffffc}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffffffc}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40010824, SkipFalse: 6},
 			bpf.LoadAbsolute{Off: 38, Size: 4}, // ip6 dst address part1
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2a001450, SkipFalse: 4},
 			bpf.LoadAbsolute{Off: 42, Size: 4},                   // ip6 dst address part2
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xfffffffc}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffffffc}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40010824, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
@@ -1581,12 +1581,12 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			bpf.LoadAbsolute{Off: 22, Size: 4}, // ip6 src address part1
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2a001450, SkipFalse: 3},
 			bpf.LoadAbsolute{Off: 26, Size: 4},                   // ip6 src address part2
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xfffffffc}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffffffc}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40010824, SkipTrue: 5},
 			bpf.LoadAbsolute{Off: 38, Size: 4}, // ip6 dst address part1
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x2a001450, SkipFalse: 4},
 			bpf.LoadAbsolute{Off: 42, Size: 4},                   // ip6 dst address part2
-			bpf.ALUOpConstant{Op: bpf.ALUOpAdd, Val: 0xfffffffc}, // netmask
+			bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffffffc}, // netmask
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40010824, SkipFalse: 1},
 			bpf.RetConstant{Val: 262144},
 			bpf.RetConstant{Val: 0},
