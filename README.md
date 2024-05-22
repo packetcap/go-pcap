@@ -2,7 +2,7 @@
 
 This is a native go packet processing library. It performs a function very similar to
 [libpcap](https://github.com/the-tcpdump-group/libpcap), or, for that matter,
-[github.com/google/gopacket/pcap](github.com/google/gopacket/pcap), except that it is 100% native go.
+[github.com/gopacket/gopacket/pcap](github.com/gopacket/gopacket/pcap), except that it is 100% native go.
 This means that:
 
 * you can build it with `CGO_ENABLED=0`
@@ -35,7 +35,7 @@ for {
 
 The returned information will be the packet bytes themselves, excluding the system-defined headers, i.e. the Ethernet frame and all contents.
 
-`Handle` is 100% compatible with [gopacket.Handle](https://godoc.org/github.com/google/gopacket#Handle); you can use it to process packets, analyze layers,
+`Handle` is 100% compatible with [gopacket.Handle](https://godoc.org/github.com/gopacket/gopacket#Handle); you can use it to process packets, analyze layers,
 and anything else you would want. Note that `Handle` copies packet data before passing them to gopacket in order to avoid possible race conditions
 with `Handle.Close()`, which when called un-maps buffer shared with the kernel containing captured data. This means that gopacket can be configured
 to not perform any additional copying.
@@ -43,7 +43,7 @@ to not perform any additional copying.
 ```go
 import (
 	pcap "github.com/packetcap/go-pcap"
-	"github.com/google/gopacket"
+	"github.com/gopacket/gopacket"
 )
 
 if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {

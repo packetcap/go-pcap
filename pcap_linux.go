@@ -14,7 +14,7 @@ import (
 	"golang.org/x/net/bpf"
 	syscall "golang.org/x/sys/unix"
 
-	"github.com/google/gopacket"
+	"github.com/gopacket/gopacket"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -326,7 +326,7 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 		// the ring buffer could be un-mapped by Close. If the caller of ReadPacketData
 		// does not process packet data quickly enough and a call to Handle.Close()
 		// interleaves, it could find itself reading from invalid memory segments.
-		// If you are using go-pcap with google/gopacket, it is better to have packet
+		// If you are using go-pcap with gopacket/gopacket, it is better to have packet
 		// data copied here and then enable NoCopy for PacketSource, i.e.:
 		//   packetSource := gopacket.NewPacketSource(...)
 		//   packetSource.NoCopy = true
@@ -361,7 +361,14 @@ func (h *Handle) Close() {
 		"iface": h.iface,
 	})
 	// Wait for reader to finish before unmapping memory with the ring buffer.
+	closeAttempts := 0
 	for !atomic.CompareAndSwapUint32(&h.state, open, closed) {
+		closeAttempts += 1
+		if closeAttempts >= 1000 {
+			// Stopping before we become an infinite loop
+			logger.Tracef("Swapping on Stop tried for %d times, giving up now", closeAttempts)
+			break
+		}
 		state := atomic.LoadUint32(&h.state)
 		if state == canceled || state == gone {
 			atomic.StoreUint32(&h.state, closed)
