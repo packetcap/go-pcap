@@ -29,6 +29,8 @@ jobs:
             ${{ runner.os }}-go-
       - name: Install dependencies
         run: go mod download
+      - name: vet
+        run: make fmt-check vet
       - name: Run unit tests
         run: |
           docker run --rm --privileged \
@@ -74,8 +76,6 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.22'
-    - name: ci
-      run: make fmt-check vet OS=${{ matrix.goos }}
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v6
     - name: Build binaries
