@@ -69,7 +69,7 @@ func Test_simpleMsg(t *testing.T) {
 	}()
 	packetSource := gopacket.NewPacketSource(handle, layers.LinkType(handle.LinkType()))
 	var count int
-	for _ = range packetSource.Packets() {
+	for range packetSource.Packets() {
 		count++
 	}
 	t.Logf("We got %d packets", count)
