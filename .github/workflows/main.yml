@@ -12,7 +12,6 @@ jobs:
     services:
       docker:
         image: docker:20.10.8
-        options: --privileged
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,17 +28,20 @@ jobs:
             ${{ runner.os }}-go-
       - name: Install dependencies
         run: go mod download
-      - name: vet
-        run: make fmt-check vet
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+      - name: Format check
+        run: make fmt-check
       - name: Run unit tests
         run: |
-          docker run --rm --privileged \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
-            golang:1.22 \
-            /bin/sh -c "go mod download && go test ./..."
-  report:
-    name: Report
+          docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -v ${{ github.workspace }}/go/pkg/mod:/go/pkg/mod \ # Add module cache volume
+          -w /workspace \
+          golang:1.22 \
+          /bin/sh -c "go test ./..."
+  workflow_info:
+    name: Workflow Info
     runs-on: ubuntu-latest
     steps:
     - name: ref
@@ -50,89 +52,101 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
     strategy:
       matrix:
         include:
-          - goos: linux
+          - target: linux-i386
+            goos: linux
             goarch: 386
-          - goos: linux
+          - target: linux-x86_64
+            goos: linux
             goarch: amd64
-          - goos: linux
+          - target: linux-armv6
+            goos: linux
             goarch: armv6
-          - goos: linux
+          - target: linux-armv7
+            goos: linux
             goarch: armv7
-          - goos: linux
+          - target: linux-arm64
+            goos: linux
             goarch: arm64
-          - goos: linux
+          - target: linux-viscv64
+            goos: linux
             goarch: riscv64
-          - goos: darwin
+          - target: darwin-x86_64
+            goos: darwin
             goarch: amd64
-          - goos: darwin
+          - target: darwin-arm64
+            goos: darwin
             goarch: arm64
-    steps:
-    - name: checkout code
-      uses: actions/checkout@v4
-    - name: set up go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v6
-    - name: Build binaries
-      env:
-        GOARCH: ${{ matrix.goarch }}
-        GOOS: ${{ matrix.goos }}
-      run: |
-        ARCH=""
-        case $GOARCH in
-          amd64)
-            ARCH="x86_64"
-            ;;
-          386)
-            ARCH="i386"
-            ;;
-          arm64)
-            ARCH="arm64"
-            ;;
-          armv6)
-            GOARCH=arm
-            GOARM=6
-            ARCH="armv6"
-            ;;
-          armv7)
-            GOARCH=arm
-            GOARM=7
-            ARCH="armv7"
-            ;;
-          *)
-            ARCH=$GOARCH
-            ;;
-        esac
-        OUT_DIR=dist/pcap-$GOOS-$ARCH
-        mkdir -p $OUT_DIR
-        go build -o $OUT_DIR ./cmd
+        steps:
+        - name: Build binaries
+          env:
+            TARGET: ${{ matrix.target }}
+            GOARCH: ${{ matrix.goarch }}
+            GOOS: ${{ matrix.goos }}
+          run: |
+            OUT_DIR=dist/pcap-$TARGET
+            mkdir -p $OUT_DIR
+            go build -o $OUT_DIR/pcap ./cmd
   new_tag:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     name: New Tag
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
-      - name: set up go
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
       - name: Get next version
-        id: vars
+        id: new_git_tag
         run: |
           cd ..; go install github.com/caarlos0/svu@latest ; cd - 
-          echo "NEW_TAG=$(svu next)" >> $GITHUB_ENV
+          echo "NEW_TAG=$(svu next)" >> $GITHUB_OUTPUT
+    outputs:
+      new_tag: ${{ steps.new_git_tag.outputs.NEW_TAG }}
   release:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (github.event_name == 'push') }}
     name: Release
     runs-on: ubuntu-latest
     needs: [build, new_tag]
+    strategy:
+      matrix:
+        include:
+          - target: linux-i386
+            goos: linux
+            goarch: 386
+          - target: linux-x86_64
+            goos: linux
+            goarch: amd64
+          - target: linux-armv6
+            goos: linux
+            goarch: armv6
+          - target: linux-armv7
+            goos: linux
+            goarch: armv7
+          - target: linux-arm64
+            goos: linux
+            goarch: arm64
+          - target: linux-viscv64
+            goos: linux
+            goarch: riscv64
+          - target: darwin-x86_64
+            goos: darwin
+            goarch: amd64
+          - target: darwin-arm64
+            goos: darwin
+            goarch: arm64
     steps:
     - name: Create Release
       id: create_release
@@ -140,18 +154,17 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ env.NEW_TAG }}
-        release_name: Release ${{ env.NEW_TAG }}
+        tag_name: ${{ needs.new_tag.outputs.new_tag }}   # Get from new_tag's output
+        release_name: Release ${{ needs.new_tag.outputs.new_tag }} # Get from new_tag's output
         draft: false
         prerelease: false
-
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist
-        asset_name: pcap
+        asset_path: ./dist/pcap-${{ matrix.target }}/pcap
+        asset_name: pcap-${{ matrix.target }}
         asset_content_type: application/octet-stream
 
