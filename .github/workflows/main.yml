@@ -18,17 +18,26 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:20.10.8
     strategy:
       matrix:
         os: [linux, darwin]
     steps:
     - name: checkout
       uses: actions/checkout@v3
-    - uses: actions/setup-go@v3
+    - uses: actions/setup-go@v5
       with:
-        go-version: '1.19.6'
+        go-version: '1.22'
     - name: ci
-      run: make fmt-check vet test OS=${{ matrix.os }}
+      run: |
+        docker run --rm \
+        -v ${{ github.workspace }}:/workspace \
+        -v ${{ github.workspace }}/go/pkg/mod:/go/pkg/mod \
+        -w /workspace \
+        golang:1.22 \
+        /bin/sh -c "go mod download && make fmt-check vet test OS=${{ matrix.os }}"
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3
       with:
