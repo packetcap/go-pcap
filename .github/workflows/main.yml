@@ -39,8 +39,8 @@ jobs:
         golang:1.22 \
         /bin/sh -c "go mod download && make fmt-check vet test OS=${{ matrix.os }}"
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v3
+      uses: golangci/golangci-lint-action@v6
       with:
         # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
-        version: v1.51.2
+        version: v1.59.0
       
