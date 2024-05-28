@@ -8,9 +8,10 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/google/gopacket"
-	"github.com/packetcap/go-pcap/filter"
+	"github.com/gopacket/gopacket"
 	"golang.org/x/net/bpf"
+
+	"github.com/packetcap/go-pcap/filter"
 )
 
 const (
@@ -30,7 +31,7 @@ type BpfProgram struct {
 	Filter *bpf.RawInstruction
 }
 
-// OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/google/gopacket#PacketDataSource
+// OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/gopacket/gopacket#PacketDataSource
 // so you can pass it there.
 func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
 	return openLive(device, snaplen, promiscuous, timeout, syscalls)

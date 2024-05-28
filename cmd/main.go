@@ -5,11 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/packetcap/go-pcap"
+	"github.com/gopacket/gopacket"
+	"github.com/gopacket/gopacket/layers"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	"github.com/packetcap/go-pcap"
 )
 
 var (

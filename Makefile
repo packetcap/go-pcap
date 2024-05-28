@@ -37,7 +37,7 @@ export GO111MODULE=on
 
 LINTER ?= $(GOBINDIR)/golangci-lint
 LINTER_VERSION ?= v1.23.3
-GOFILES := $(shell find . -name '*.go')
+GOFILES := $(shell find . -name '*.go' | grep -v go/pkg/mod)
 
 $(BINDIR):
 	mkdir -p $@

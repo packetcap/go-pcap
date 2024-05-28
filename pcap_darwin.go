@@ -11,7 +11,7 @@ import (
 	"golang.org/x/net/bpf"
 	syscall "golang.org/x/sys/unix"
 
-	"github.com/google/gopacket"
+	"github.com/gopacket/gopacket"
 	log "github.com/sirupsen/logrus"
 )
 
