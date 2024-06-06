@@ -1,0 +1,123 @@
+name: New Tag and Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  new_tag:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.get_version.outputs.new_tag }} # Make the tag an output
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for accurate tag comparison
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true # Enable Go module caching (built into setup-go)
+      - name: Get next version
+        id: get_version
+        run: |
+          if [[ -z "$(git tag --points-at HEAD)" ]]; then
+            # No tags on this commit, lets increment the existing tag to get a new one
+            go install github.com/caarlos0/svu@latest
+            NEW_TAG=$(svu next --force-patch-increment)
+            echo "Using the next tag of ${NEW_TAG} for this release"
+          else
+            # Existing user created tag, we are assuming we just need to create a release
+            NEW_TAG=$(git describe --tags --abbrev=0)
+            echo "Using the current tag of ${NEW_TAG}"
+          fi
+          if [[ -z "$NEW_TAG" ]]; then
+            echo "Error: Failed to get current or generate new tag."
+            exit 1
+          fi
+          echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
+
+  create_release:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    needs: new_tag
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for accurate tag comparison
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.new_tag.outputs.new_tag }}
+          release_name: Release ${{ needs.new_tag.outputs.new_tag }}
+          draft: false
+          prerelease: false
+
+  # In this Release section, we are re-building the binaries because eventually we can include the new git tag as their
+  #   version string when saying 'pcap --version'
+  build_and_upload:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    needs: [new_tag, create_release]
+    strategy:
+      matrix:
+        include:
+          - target: linux-i386
+            goos: linux
+            goarch: 386
+          - target: linux-x86_64
+            goos: linux
+            goarch: amd64
+          - target: linux-armv6
+            goos: linux
+            goarch: arm
+            goarm: 6
+          - target: linux-armv7
+            goos: linux
+            goarch: arm
+            goarm: 7
+          - target: linux-arm64
+            goos: linux
+            goarch: arm64
+          - target: linux-riscv64
+            goos: linux
+            goarch: riscv64
+          - target: darwin-x86_64
+            goos: darwin
+            goarch: amd64
+          - target: darwin-arm64
+            goos: darwin
+            goarch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for accurate tag comparison
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true # Enable Go module caching (built into setup-go)
+      - name: Build binaries (with new version)
+        env:
+          TARGET: ${{ matrix.target }}
+          GOARCH: ${{ matrix.goarch }}
+          GOOS: ${{ matrix.goos }}
+          GOARM: ${{ matrix.goarm }}
+        run: go build -o dist/pcap-$TARGET ./cmd
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ./dist/pcap-${{ matrix.target }}
+          asset_name: pcap-${{ matrix.target }}
+          asset_content_type: application/octet-stream
