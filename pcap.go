@@ -27,7 +27,7 @@ type Packet struct {
 }
 
 type BpfProgram struct {
-	Len    uint16
+	Len    uint32
 	Filter *bpf.RawInstruction
 }
 

@@ -83,7 +83,7 @@ func (h *Handle) setFilter() error {
 	 * Try to install the kernel filter.
 	 */
 	prog := BpfProgram{
-		Len:    uint16(len(h.filter)),
+		Len:    uint32(len(h.filter)),
 		Filter: (*bpf.RawInstruction)(unsafe.Pointer(&h.filter[0])),
 	}
 	if err := ioctlPtr(h.fd, syscall.BIOCSETF, unsafe.Pointer(&prog)); err != nil {
