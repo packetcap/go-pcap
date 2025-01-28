@@ -32,6 +32,11 @@ type Handle struct {
 	filter      []bpf.RawInstruction
 }
 
+type BpfProgram struct {
+	Len    uint32
+	Filter *bpf.RawInstruction
+}
+
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
 	if h.syscalls {
 		return h.readPacketDataSyscall()

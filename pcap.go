@@ -26,11 +26,6 @@ type Packet struct {
 	Error error
 }
 
-type BpfProgram struct {
-	Len    uint32
-	Filter *bpf.RawInstruction
-}
-
 // OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/gopacket/gopacket#PacketDataSource
 // so you can pass it there.
 func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
