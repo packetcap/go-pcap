@@ -1,46 +1,101 @@
 name: Continuous Integration
 on:
- pull_request:
-   types: [opened, synchronize, reopened]
- push:
-   branches:
-     - master
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - master
 
 jobs:
   report:
     name: Report
     runs-on: ubuntu-latest
     steps:
-    - name: ref
-      run: echo ${{ github.ref }}
-    - name: event_name
-      run: echo ${{ github.event_name }}
-  build:
-    name: Build
+      - name: ref
+        run: echo ${{ github.ref }}
+      - name: event_name
+        run: echo ${{ github.event_name }}
+
+  test:
     runs-on: ubuntu-latest
     services:
       docker:
         image: docker:20.10.8
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for accurate tag comparison
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true # Enable Go module caching (built into setup-go)
+      - name: Install dependencies
+        run: go mod download
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+      - name: Format check
+        run: make fmt-check
+      - name: Go Vet
+        run: make vet
+      - name: Run unit tests
+        run: |
+          # Normally Go unit tests are not ran within a docker container, but we need to test against
+          # a network interface and GitHub doesn't like us to do that directly
+          docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -v ${{ github.workspace }}/go/pkg/mod:/go/pkg/mod \
+          -w /workspace \
+          golang:1.22 \
+          /bin/sh -c "go mod download && go test ./..."
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
     strategy:
       matrix:
-        os: [linux, darwin]
+        include:
+          - target: linux-i386
+            goos: linux
+            goarch: 386
+          - target: linux-x86_64
+            goos: linux
+            goarch: amd64
+          - target: linux-armv6
+            goos: linux
+            goarch: arm
+            goarm: 6
+          - target: linux-armv7
+            goos: linux
+            goarch: arm
+            goarm: 7
+          - target: linux-arm64
+            goos: linux
+            goarch: arm64
+          - target: linux-riscv64
+            goos: linux
+            goarch: riscv64
+          - target: darwin-x86_64
+            goos: darwin
+            goarch: amd64
+          - target: darwin-arm64
+            goos: darwin
+            goarch: arm64
     steps:
-    - name: checkout
-      uses: actions/checkout@v3
-    - uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
-    - name: ci
-      run: |
-        docker run --rm \
-        -v ${{ github.workspace }}:/workspace \
-        -v ${{ github.workspace }}/go/pkg/mod:/go/pkg/mod \
-        -w /workspace \
-        golang:1.22 \
-        /bin/sh -c "go mod download && make fmt-check vet test OS=${{ matrix.os }}"
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
-        version: v1.59.0
-      
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for accurate tag comparison
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true # Enable Go module caching (built into setup-go)
+      - name: Build binaries
+        env:
+          TARGET: ${{ matrix.target }}
+          GOARCH: ${{ matrix.goarch }}
+          GOOS: ${{ matrix.goos }}
+          GOARM: ${{ matrix.goarm }}
+        run: go build -o dist/pcap-$TARGET ./cmd
