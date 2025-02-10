@@ -23,7 +23,7 @@ jobs:
         image: docker:20.10.8
     strategy:
       matrix:
-        os: [linux, darwin]
+        os: [linux, darwin, freebsd]
     steps:
     - name: checkout
       uses: actions/checkout@v3
