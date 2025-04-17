@@ -88,8 +88,8 @@ func (p primitive) Combine(o *primitive) *primitive {
 		return nil
 	}
 
-	switch {
-	case p.negator == o.negator:
+	switch p.negator {
+	case o.negator:
 		c.negator = p.negator
 	default:
 		return nil

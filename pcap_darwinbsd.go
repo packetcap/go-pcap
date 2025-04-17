@@ -11,7 +11,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/net/bpf"
-	syscall "golang.org/x/sys/unix"
+	"golang.org/x/sys/unix"
 
 	"github.com/gopacket/gopacket"
 	log "github.com/sirupsen/logrus"
@@ -49,7 +49,7 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	// must memset the buffer
 	h.buf = make([]byte, len(h.buf))
-	read, err := syscall.Read(h.fd, h.buf)
+	read, err := unix.Read(h.fd, h.buf)
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading: %v", err)
 	}
@@ -57,8 +57,8 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 		return nil, ci, fmt.Errorf("read no packets")
 	}
 	// separate the header and packet body
-	hdr := syscall.BpfHdr{}
-	buf := bytes.NewBuffer(h.buf[:syscall.SizeofBpfHdr])
+	hdr := unix.BpfHdr{}
+	buf := bytes.NewBuffer(h.buf[:unix.SizeofBpfHdr])
 	err = binary.Read(buf, h.endian, &hdr)
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading bpf header: %v", err)
@@ -80,7 +80,7 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 // Close close sockets and release resources
 func (h *Handle) Close() {
 	// close the socket
-	_ = syscall.Close(h.fd)
+	_ = unix.Close(h.fd)
 }
 
 // set a classic BPF filter on the listener. filter must be compliant with
@@ -93,7 +93,7 @@ func (h *Handle) setFilter() error {
 		Len:    uint32(len(h.filter)),
 		Filter: (*bpf.RawInstruction)(unsafe.Pointer(&h.filter[0])),
 	}
-	if err := ioctlPtr(h.fd, syscall.BIOCSETF, unsafe.Pointer(&prog)); err != nil {
+	if err := ioctlPtr(h.fd, unix.BIOCSETF, unsafe.Pointer(&prog)); err != nil {
 		return fmt.Errorf("unable to set filter: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func (h *Handle) setFilter() error {
 
 func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
 	var (
-		fd  int = -1
+		fd  = -1
 		err error
 	)
 	logger := log.WithFields(log.Fields{
@@ -127,11 +127,11 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	// open the bpf device
 	for i := 0; i < 255; i++ {
 		dev := fmt.Sprintf("/dev/bpf%d", i)
-		fd, err = syscall.Open(dev, syscall.O_RDWR, 0000)
+		fd, err = unix.Open(dev, unix.O_RDWR, 0000)
 		if fd > -1 {
 			break
 		}
-		if err != nil && err == syscall.EBUSY {
+		if err != nil && err == unix.EBUSY {
 			continue
 		}
 		return nil, fmt.Errorf("error opening device %s: %v", dev, err)
@@ -167,32 +167,34 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 // create a replacement. Sigh.
 
 type ivalue struct {
-	name  [syscall.IFNAMSIZ]byte
+	name  [unix.IFNAMSIZ]byte
 	value int16
 }
 
 func SetBpfInterface(fd int, name string) error {
 	var iv ivalue
 	copy(iv.name[:], []byte(name))
-	return ioctlPtr(fd, syscall.BIOCSETIF, unsafe.Pointer(&iv))
+	return ioctlPtr(fd, unix.BIOCSETIF, unsafe.Pointer(&iv))
 }
 
 func SetBpfHeadercmpl(fd, m int) error {
-	return ioctlPtr(fd, syscall.BIOCSHDRCMPLT, unsafe.Pointer(&m))
+	return unix.IoctlSetPointerInt(fd, unix.BIOCSHDRCMPLT, m)
 }
 
 func SetBpfImmediate(fd, m int) error {
-	return ioctlPtr(fd, syscall.BIOCIMMEDIATE, unsafe.Pointer(&m))
+	return unix.IoctlSetPointerInt(fd, unix.BIOCIMMEDIATE, m)
 }
 
 func SetBpfMonitor(fd, m int) error {
-	return ioctlPtr(fd, syscall.BIOCSSEESENT, unsafe.Pointer(&m))
+	return unix.IoctlSetPointerInt(fd, unix.BIOCSSEESENT, m)
 }
 func BpfBuflen(fd int) (int, error) {
-	return syscall.IoctlGetInt(fd, syscall.BIOCGBLEN)
+	return unix.IoctlGetInt(fd, unix.BIOCGBLEN)
 }
 func ioctlPtr(fd, arg int, valPtr unsafe.Pointer) error {
-	_, _, errno := syscall.RawSyscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(arg), uintptr(valPtr))
+	//nolint:staticcheck // unix.SYS_IOCTL is deprecated, but golang does not provide a better alternative
+	// as of this writing for passing pointers
+	_, _, errno := unix.RawSyscall(unix.SYS_IOCTL, uintptr(fd), uintptr(arg), uintptr(valPtr))
 	if errno != 0 {
 		return fmt.Errorf("error: %d", errno)
 	}
