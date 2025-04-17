@@ -300,7 +300,7 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 		if err := binary.Read(buf, h.endian, &hdr); err != nil {
 			msg := fmt.Sprintf("error reading tpacket3 header on byte %d: %v", i, err)
 			logger.Errorf(msg)
-			return nil, fmt.Errorf(msg)
+			return nil, errors.New(msg)
 		}
 		logger.Debugf("tpacket3 header %#v", hdr)
 		nextOffset = hdr.Next_offset
@@ -442,8 +442,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	h.endian = endianness
 
 	// because syscall package does not provide this
-	rall := syscall.RawSockaddrLinklayer{}
-	packetRALLSize = int32(unsafe.Sizeof(rall))
+	packetRALLSize = int32(unsafe.Sizeof(syscall.RawSockaddrLinklayer{}))
 	alignedTpacketHdrSize = tpacketAlign(syscall.SizeofTpacket3Hdr)
 	alignedTpacketRALLSize = tpacketAlign(packetRALLSize)
 	alignedTpacketAllHdrSize = alignedTpacketHdrSize + alignedTpacketRALLSize
@@ -511,10 +510,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 			blockSize           = uint32(pageSize)
 			blockNumbers uint32 = defaultBlockNumbers
 		)
-		for {
-			if blockSize > frameSize {
-				break
-			}
+		for blockSize <= frameSize {
 			blockSize = blockSize << 1
 		}
 		// we use the default - for now

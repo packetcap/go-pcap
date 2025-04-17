@@ -380,9 +380,9 @@ func loadAndCompareIPv6DestinationAddress(addr [4]uint32, mask net.IPMask, skipT
 // it is important to know if it is absolute (positive number) or just right after (0).
 func loadAndCompareIPv6Address(addr [4]uint32, mask net.IPMask, source bool, skipTrue, skipFalse uint8) []bpf.Instruction {
 	var (
-		maskSize int = 128
+		maskSize = 128
 		maskInst bpf.Instruction
-		start    uint32 = ip6SourceAddressStart
+		start    = ip6SourceAddressStart
 		st, sf   uint8
 		// how many steps do we expect?
 		size uint8 = 8

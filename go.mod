@@ -1,6 +1,6 @@
 module github.com/packetcap/go-pcap
 
-go 1.20
+go 1.23
 
 require (
 	github.com/gopacket/gopacket v1.2.0
