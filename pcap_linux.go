@@ -566,3 +566,9 @@ func parseSocketAddrLinkLayer(b []byte, endian binary.ByteOrder) (*syscall.RawSo
 	}
 	return &sall, nil
 }
+
+// LinkType return the link type, compliant with pcap-linktype(7) and http://www.tcpdump.org/linktypes.html.
+// For now, we just support Ethernet; some day we may support more
+func (h Handle) LinkType() uint32 {
+	return LinkTypeEthernet
+}

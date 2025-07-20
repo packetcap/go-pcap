@@ -32,6 +32,7 @@ type Handle struct {
 	buf         []byte
 	endian      binary.ByteOrder
 	filter      []bpf.RawInstruction
+	linkType    uint32
 }
 
 type BpfProgram struct {
@@ -160,6 +161,12 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	}
 	h.buf = make([]byte, size)
 
+	linkType, err := getLinkType(fd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get link type: %v", err)
+	}
+	h.linkType = linkType
+
 	return &h, nil
 }
 
@@ -199,4 +206,17 @@ func ioctlPtr(fd, arg int, valPtr unsafe.Pointer) error {
 		return fmt.Errorf("error: %d", errno)
 	}
 	return nil
+}
+func getLinkType(fd int) (uint32, error) {
+	linkType, err := unix.IoctlGetInt(fd, unix.BIOCGDLT)
+	if err != nil {
+		return 0xffffffff, fmt.Errorf("failed to get link type: %v", err)
+	}
+	return uint32(linkType), nil
+}
+
+// LinkType return the link type, compliant with pcap-linktype(7) and http://www.tcpdump.org/linktypes.html.
+// For now, we just support Null and Ethernet; some day we may support more
+func (h Handle) LinkType() uint32 {
+	return h.linkType
 }
