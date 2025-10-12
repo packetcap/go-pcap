@@ -1,0 +1,62 @@
+name: Continuous Integration
+on:
+ pull_request:
+   types: [opened, synchronize, reopened]
+ push:
+   branches:
+     - master
+
+jobs:
+  report:
+    name: Report
+    runs-on: ubuntu-latest
+    steps:
+    - name: ref
+      run: echo ${{ github.ref }}
+    - name: event_name
+      run: echo ${{ github.event_name }}
+  test:
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:20.10.8
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Install dependencies
+        run: go mod download
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
+      - name: Format check
+        run: make fmt-check
+      - name: Go Vet
+        run: make vet
+      - name: Go unit tests
+        run: |
+          # Normally Go unit tests are not ran within a docker container, but we need to test against
+          # a network interface and GitHub doesn't like us to do that directly
+          docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -v ${{ github.workspace }}/go/pkg/mod:/go/pkg/mod \
+          -w /workspace \
+          golang:$(go list -m -f '{{.GoVersion}}') \
+          /bin/sh -c "go mod download && go test ./..."
+
+  build:
+    name: Build
+    uses: ./.github/workflows/build-reusable.yml
+  
+  summary:
+    needs: [build, test, report]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: echo "Build and Test jobs completed successfully"

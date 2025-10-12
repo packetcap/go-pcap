@@ -1,0 +1,66 @@
+name: Build Reusable
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: 'OS to build for in GOOS format'
+        type: string
+      arch:
+        description: 'Architecture to build for in GOARCH format'
+        type: string
+      arm:
+        description: 'ARM version to build for in GOARM format (if applicable)'
+        type: string
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: linux-i386
+            os: linux
+            arch: 386
+          - target: linux-x86_64
+            os: linux
+            arch: amd64
+          - target: linux-armv6
+            os: linux
+            arch: arm
+            arm: 6
+          - target: linux-armv7
+            os: linux
+            arch: arm
+            arm: 7
+          - target: linux-arm64
+            os: linux
+            arch: arm64
+          - target: linux-riscv64
+            os: linux
+            arch: riscv64
+          - target: darwin-x86_64
+            os: darwin
+            arch: amd64
+          - target: darwin-arm64
+            os: darwin
+            arch: arm64
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+    - name: Build binaries
+      env:
+        TARGET: ${{ matrix.target }}
+        GOARCH: ${{ matrix.arch }}
+        GOOS: ${{ matrix.os }}
+        GOARM: ${{ matrix.arm }}
+      run: make build
+    - uses: actions/upload-artifact@v4
+      with:
+        name: pcap-${{ matrix.target }}
+        path: dist/*
+      
