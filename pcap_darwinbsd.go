@@ -55,58 +55,38 @@ func (h *Handle) ReadPacketDataWithTimeout(timeout time.Duration) (data []byte, 
 }
 
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
-	// must memset the buffer
-	h.buf = make([]byte, len(h.buf))
-	read, err := unix.Read(h.fd, h.buf)
-	if err != nil {
-		return nil, ci, fmt.Errorf("error reading: %v", err)
-	}
-	if read <= 0 {
-		return nil, ci, fmt.Errorf("read no packets")
-	}
-	// separate the header and packet body
-	hdr := unix.BpfHdr{}
-	buf := bytes.NewBuffer(h.buf[:unix.SizeofBpfHdr])
-	err = binary.Read(buf, h.endian, &hdr)
-	if err != nil {
-		return nil, ci, fmt.Errorf("error reading bpf header: %v", err)
-	}
-	// TODO: add CaptureInfo, specifically:
-	//    capture timestamp
-	ci = gopacket.CaptureInfo{
-		CaptureLength:  int(hdr.Caplen),
-		Length:         int(hdr.Datalen),
-		InterfaceIndex: h.index,
-	}
-	return h.buf[hdr.Hdrlen : uint32(hdr.Hdrlen)+hdr.Caplen], ci, nil
+	return h.readPacketDataSyscallWithTimeout(time.Duration(0))
 }
 
 func (h *Handle) readPacketDataSyscallWithTimeout(timeout time.Duration) (data []byte, ci gopacket.CaptureInfo, err error) {
 	// must memset the buffer
 	h.buf = make([]byte, len(h.buf))
 
-	pollFds := []unix.PollFd{
-		{
-			Fd:     int32(h.fd),
-			Events: unix.POLLIN,
-		},
-	}
-
-	timeoutMs := int(timeout.Milliseconds())
-	ready, err := unix.Poll(pollFds, timeoutMs)
-	if err != nil {
-		return nil, ci, err
-	}
-
-	if ready == 0 {
-		return nil, ci, fmt.Errorf("read timeout after %v", timeout)
-	}
-
-	if pollFds[0].Revents&unix.POLLIN == 0 {
-		if pollFds[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0 {
-			return nil, ci, fmt.Errorf("poll error event: %v", pollFds[0].Revents)
+	// if a timeout is specified, use poll to wait for data, otherwise read will block infinitely.
+	if timeout != 0 {
+		pollFds := []unix.PollFd{
+			{
+				Fd:     int32(h.fd),
+				Events: unix.POLLIN,
+			},
 		}
-		return nil, ci, fmt.Errorf("unexpected poll event: %v", pollFds[0].Revents)
+
+		timeoutMs := int(timeout.Milliseconds())
+		ready, err := unix.Poll(pollFds, timeoutMs)
+		if err != nil {
+			return nil, ci, err
+		}
+
+		if ready == 0 {
+			return nil, ci, fmt.Errorf("read timeout after %v", timeout)
+		}
+
+		if pollFds[0].Revents&unix.POLLIN == 0 {
+			if pollFds[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0 {
+				return nil, ci, fmt.Errorf("poll error event: %v", pollFds[0].Revents)
+			}
+			return nil, ci, fmt.Errorf("unexpected poll event: %v", pollFds[0].Revents)
+		}
 	}
 
 	read, err := unix.Read(h.fd, h.buf)
