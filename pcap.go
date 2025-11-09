@@ -43,7 +43,7 @@ func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Durat
 }
 
 // Listen simple one-step command to listen and send packets over a returned channel
-func (h Handle) Listen() chan Packet {
+func (h *Handle) Listen() chan Packet {
 	c := make(chan Packet, 50)
 	go func() {
 		for {
