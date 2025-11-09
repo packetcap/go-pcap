@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -79,6 +80,7 @@ const pollIntervalMs = 60 * 1000 // 1 minute
 type Handle struct {
 	// this must be first for atomic to behave nicely
 	state           uint32
+	closed          sync.Once
 	syscalls        bool
 	promiscuous     bool
 	index           int
@@ -356,44 +358,47 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 }
 
 // Close close sockets and release resources
+// Close is idempotent, and uses sync.Once to ensure it only runs once.
 func (h *Handle) Close() {
-	logger := log.WithFields(log.Fields{
-		"iface": h.iface,
+	h.closed.Do(func() {
+		logger := log.WithFields(log.Fields{
+			"iface": h.iface,
+		})
+		// Wait for reader to finish before unmapping memory with the ring buffer.
+		closeAttempts := 0
+		for !atomic.CompareAndSwapUint32(&h.state, open, closed) {
+			closeAttempts += 1
+			if closeAttempts >= 1000 {
+				// Stopping before we become an infinite loop
+				logger.Tracef("Swapping on Stop tried for %d times, giving up now", closeAttempts)
+				break
+			}
+			state := atomic.LoadUint32(&h.state)
+			if state == canceled || state == gone {
+				atomic.StoreUint32(&h.state, closed)
+				break
+			}
+			if atomic.CompareAndSwapUint32(&h.state, reading, canceling) {
+				logger.Debugf("cancelling ongoig packet read")
+			}
+			if atomic.CompareAndSwapUint32(&h.state, polling, canceling) {
+				// When polling is interrupted it is safe to go ahead and unmap the ring buffer.
+				// Reader will eventually detect canceled polling and will exit without accessing
+				// the buffer anymore.
+				logger.Debugf("cancelling ongoing socket polling; not waiting for poll to return")
+				break
+			}
+		}
+		if h.ring != nil {
+			if err := syscall.Munmap(h.ring); err != nil {
+				logger.Errorf("error unmapping mmap at %p ; nothing to do", h.ring)
+			}
+		}
+		// close the socket
+		if err := syscall.Close(h.fd); err != nil {
+			logger.Errorf("error closing file descriptor %d ; nothing to do", h.fd)
+		}
 	})
-	// Wait for reader to finish before unmapping memory with the ring buffer.
-	closeAttempts := 0
-	for !atomic.CompareAndSwapUint32(&h.state, open, closed) {
-		closeAttempts += 1
-		if closeAttempts >= 1000 {
-			// Stopping before we become an infinite loop
-			logger.Tracef("Swapping on Stop tried for %d times, giving up now", closeAttempts)
-			break
-		}
-		state := atomic.LoadUint32(&h.state)
-		if state == canceled || state == gone {
-			atomic.StoreUint32(&h.state, closed)
-			break
-		}
-		if atomic.CompareAndSwapUint32(&h.state, reading, canceling) {
-			logger.Debugf("cancelling ongoig packet read")
-		}
-		if atomic.CompareAndSwapUint32(&h.state, polling, canceling) {
-			// When polling is interrupted it is safe to go ahead and unmap the ring buffer.
-			// Reader will eventually detect canceled polling and will exit without accessing
-			// the buffer anymore.
-			logger.Debugf("cancelling ongoing socket polling; not waiting for poll to return")
-			break
-		}
-	}
-	if h.ring != nil {
-		if err := syscall.Munmap(h.ring); err != nil {
-			logger.Errorf("error unmapping mmap at %p ; nothing to do", h.ring)
-		}
-	}
-	// close the socket
-	if err := syscall.Close(h.fd); err != nil {
-		logger.Errorf("error closing file descriptor %d ; nothing to do", h.fd)
-	}
 }
 
 // set a classic BPF filter on the listener. filter must be compliant with
@@ -569,6 +574,6 @@ func parseSocketAddrLinkLayer(b []byte, endian binary.ByteOrder) (*syscall.RawSo
 
 // LinkType return the link type, compliant with pcap-linktype(7) and http://www.tcpdump.org/linktypes.html.
 // For now, we just support Ethernet; some day we may support more
-func (h Handle) LinkType() uint32 {
+func (h *Handle) LinkType() uint32 {
 	return LinkTypeEthernet
 }

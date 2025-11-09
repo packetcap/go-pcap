@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -25,6 +26,7 @@ const (
 
 type Handle struct {
 	syscalls    bool
+	closed      sync.Once
 	promiscuous bool //nolint: unused
 	index       int
 	snaplen     int32
@@ -79,9 +81,12 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 }
 
 // Close close sockets and release resources
+// Close is idempotent, and uses sync.Once to ensure it only runs once.
 func (h *Handle) Close() {
 	// close the socket
-	_ = unix.Close(h.fd)
+	h.closed.Do(func() {
+		_ = unix.Close(h.fd)
+	})
 }
 
 // set a classic BPF filter on the listener. filter must be compliant with
@@ -217,6 +222,6 @@ func getLinkType(fd int) (uint32, error) {
 
 // LinkType return the link type, compliant with pcap-linktype(7) and http://www.tcpdump.org/linktypes.html.
 // For now, we just support Null and Ethernet; some day we may support more
-func (h Handle) LinkType() uint32 {
+func (h *Handle) LinkType() uint32 {
 	return h.linkType
 }
