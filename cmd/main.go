@@ -18,7 +18,7 @@ var (
 	useSyscalls bool
 	debug       bool
 	iface       string
-	timeout     int
+	timeout     time.Duration
 )
 
 func main() {
@@ -44,17 +44,11 @@ var rootCmd = &cobra.Command{
 		}
 
 		fmt.Printf("capturing from interface %s\n", iface)
-		if handle, err = pcap.OpenLive(iface, 1600, true, 0, useSyscalls); err != nil {
+		if handle, err = pcap.OpenLive(iface, 1600, true, timeout, useSyscalls); err != nil {
 			log.Fatal(err)
 		}
 		if err := handle.SetBPFFilter(filter); err != nil {
 			log.Fatalf("unexpected error setting filter: %v", err)
-		}
-		if timeout > 0 {
-			go func() {
-				time.Sleep(time.Duration(timeout) * time.Second)
-				handle.Close()
-			}()
 		}
 		if useGopacket {
 			packetSource := gopacket.NewPacketSource(handle, layers.LinkType(handle.LinkType()))
@@ -76,7 +70,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&useSyscalls, "syscalls", pcap.DefaultSyscalls, "use syscalls instead of mmap when mmap is available; the default varies by platform")
 	rootCmd.Flags().BoolVar(&debug, "debug", false, "print lots of debugging messages")
 	rootCmd.Flags().StringVarP(&iface, "interface", "i", "", "interface from which to capture, default to all")
-	rootCmd.Flags().IntVar(&timeout, "timeout", 0, "close the listener after given number of seconds, 0 to never close")
+	rootCmd.Flags().DurationVar(&timeout, "timeout", 0, "close the listener after given timeout, e.g. 10s, 1m, 1h; default 0 means no timeout")
 }
 
 func processPacket(packet gopacket.Packet, count int) {
