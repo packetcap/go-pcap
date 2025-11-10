@@ -49,9 +49,48 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 	return h.readPacketDataMmap()
 }
 
+func (h *Handle) ReadPacketDataWithTimeout(timeout time.Duration) (data []byte, ci gopacket.CaptureInfo, err error) {
+	if h.syscalls {
+		return h.readPacketDataSyscallWithTimeout(timeout)
+	}
+	return h.readPacketDataMmapWithTimeout(timeout)
+}
+
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
+	return h.readPacketDataSyscallWithTimeout(time.Duration(0))
+}
+
+func (h *Handle) readPacketDataSyscallWithTimeout(timeout time.Duration) (data []byte, ci gopacket.CaptureInfo, err error) {
 	// must memset the buffer
 	h.buf = make([]byte, len(h.buf))
+
+	// if a timeout is specified, use poll to wait for data, otherwise read will block infinitely.
+	if timeout != 0 {
+		pollFds := []unix.PollFd{
+			{
+				Fd:     int32(h.fd),
+				Events: unix.POLLIN,
+			},
+		}
+
+		timeoutMs := int(timeout.Milliseconds())
+		ready, err := unix.Poll(pollFds, timeoutMs)
+		if err != nil {
+			return nil, ci, err
+		}
+
+		if ready == 0 {
+			return nil, ci, fmt.Errorf("read timeout after %v", timeout)
+		}
+
+		if pollFds[0].Revents&unix.POLLIN == 0 {
+			if pollFds[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0 {
+				return nil, ci, fmt.Errorf("poll error event: %v", pollFds[0].Revents)
+			}
+			return nil, ci, fmt.Errorf("unexpected poll event: %v", pollFds[0].Revents)
+		}
+	}
+
 	read, err := unix.Read(h.fd, h.buf)
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading: %v", err)
@@ -77,6 +116,10 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 }
 
 func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err error) {
+	return nil, ci, errors.New("mmap unsupported on Darwin")
+}
+
+func (h *Handle) readPacketDataMmapWithTimeout(timeout time.Duration) (data []byte, ci gopacket.CaptureInfo, err error) {
 	return nil, ci, errors.New("mmap unsupported on Darwin")
 }
 
