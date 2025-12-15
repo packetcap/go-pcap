@@ -1,6 +1,7 @@
 package pcap
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -28,8 +29,12 @@ type Packet struct {
 
 // OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/gopacket/gopacket#PacketDataSource
 // so you can pass it there.
-func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, err error) {
-	handle, err = openLive(device, snaplen, promiscuous, timeout, syscalls)
+// Use the context to cancel the capture after a timeout or other condition.
+func OpenLive(ctx context.Context, device string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	handle, err = openLive(ctx, device, snaplen, promiscuous, timeout, syscalls)
 	if err != nil {
 		return nil, err
 	}
