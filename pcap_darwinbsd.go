@@ -4,10 +4,12 @@ package pcap
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -26,8 +28,10 @@ const (
 
 type Handle struct {
 	syscalls    bool
-	closed      sync.Once
+	close       sync.Once
+	closed      atomic.Bool
 	promiscuous bool //nolint: unused
+	timeout     time.Duration
 	index       int
 	snaplen     int32
 	fd          int
@@ -52,6 +56,25 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	// must memset the buffer
 	h.buf = make([]byte, len(h.buf))
+	pfd := []unix.PollFd{
+		{
+			Fd:     int32(h.fd),
+			Events: unix.POLLIN,
+		},
+	}
+
+	ms := -1
+	if h.timeout > 0 {
+		ms = int(h.timeout.Milliseconds())
+	}
+	n, err := unix.Poll(pfd, ms)
+	if err != nil {
+		return nil, ci, err
+	}
+	if n == 0 {
+		return nil, ci, context.DeadlineExceeded
+	}
+
 	read, err := unix.Read(h.fd, h.buf)
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading: %v", err)
@@ -84,8 +107,9 @@ func (h *Handle) readPacketDataMmap() (data []byte, ci gopacket.CaptureInfo, err
 // Close is idempotent, and uses sync.Once to ensure it only runs once.
 func (h *Handle) Close() {
 	// close the socket
-	h.closed.Do(func() {
+	h.close.Do(func() {
 		_ = unix.Close(h.fd)
+		h.closed.Store(true)
 	})
 }
 
@@ -171,6 +195,8 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		return nil, fmt.Errorf("failed to get link type: %v", err)
 	}
 	h.linkType = linkType
+
+	h.timeout = timeout
 
 	return &h, nil
 }
