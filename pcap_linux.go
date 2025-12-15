@@ -2,6 +2,7 @@ package pcap
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -80,6 +81,7 @@ const pollIntervalMs = 60 * 1000 // 1 minute
 type Handle struct {
 	// this must be first for atomic to behave nicely
 	state           uint32
+	context         context.Context
 	closed          sync.Once
 	syscalls        bool
 	promiscuous     bool
@@ -423,7 +425,7 @@ func tpacketAlign(base int32) int32 {
 	return (base + syscall.TPACKET_ALIGNMENT - 1) &^ (syscall.TPACKET_ALIGNMENT - 1)
 }
 
-func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
+func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
 	logger := log.WithFields(log.Fields{
 		"iface":       iface,
 		"snaplen":     snaplen,
@@ -433,6 +435,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	})
 	logger.Debug("started")
 	h := Handle{
+		context: ctx,
 		// we start with it not open
 		state:    closed,
 		snaplen:  snaplen,

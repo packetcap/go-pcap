@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -44,7 +45,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		fmt.Printf("capturing from interface %s\n", iface)
-		if handle, err = pcap.OpenLive(iface, 1600, true, timeout, useSyscalls); err != nil {
+		if handle, err = pcap.OpenLive(context.Background(), iface, 1600, true, timeout, useSyscalls); err != nil {
 			log.Fatal(err)
 		}
 		if err := handle.SetBPFFilter(filter); err != nil {

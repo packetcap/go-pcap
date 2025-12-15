@@ -27,6 +27,7 @@ const (
 )
 
 type Handle struct {
+	context     context.Context
 	syscalls    bool
 	close       sync.Once
 	closed      atomic.Bool
@@ -56,9 +57,41 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	// must memset the buffer
 	h.buf = make([]byte, len(h.buf))
+
+	var pipefd [2]int
+	if err := unix.Pipe(pipefd[:]); err != nil {
+		return nil, ci, fmt.Errorf("pipe: %w", err)
+	}
+	rfd := pipefd[0]
+	wfd := pipefd[1]
+
+	defer unix.Close(rfd)
+	defer unix.Close(wfd)
+
+	// Make pipe non-blocking
+	_ = unix.SetNonblock(rfd, true)
+	_ = unix.SetNonblock(wfd, true)
+
+	// Goroutine to signal cancellation
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-h.context.Done():
+			// Write any value to wake poll
+			_, _ = unix.Write(wfd, []byte{1})
+		case <-done:
+		}
+	}()
+	defer close(done)
+
+	// pollfd to handle events, like idle timeout or context message
 	pfd := []unix.PollFd{
 		{
 			Fd:     int32(h.fd),
+			Events: unix.POLLIN,
+		},
+		{
+			Fd:     int32(rfd),
 			Events: unix.POLLIN,
 		},
 	}
@@ -69,10 +102,17 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	}
 	n, err := unix.Poll(pfd, ms)
 	if err != nil {
+		if err == unix.EINTR {
+			return nil, ci, h.context.Err()
+		}
 		return nil, ci, err
 	}
 	if n == 0 {
 		return nil, ci, context.DeadlineExceeded
+	}
+	// Context canceled → eventfd readable
+	if pfd[1].Revents&unix.POLLIN != 0 {
+		return nil, ci, h.context.Err()
 	}
 
 	read, err := unix.Read(h.fd, h.buf)
@@ -130,7 +170,7 @@ func (h *Handle) setFilter() error {
 	return nil
 }
 
-func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
+func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
 	var (
 		fd  = -1
 		err error
@@ -144,6 +184,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	})
 	logger.Debug("started")
 	h := Handle{
+		context:  ctx,
 		snaplen:  snaplen,
 		syscalls: syscalls,
 	}
