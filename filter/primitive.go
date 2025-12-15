@@ -98,7 +98,7 @@ func (p primitive) Combine(o *primitive) *primitive {
 	return &c
 }
 
-func (p primitive) Compile() ([]bpf.Instruction, error) {
+func (p primitive) Compile(linkType uint32) ([]bpf.Instruction, error) {
 	// validate it
 	if err := p.validate(); err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 	// there always is at least the return packet and return none
 	inst := instructions{
 		inst: make([]bpf.Instruction, 0),
-		size: p.Size(),
+		size: p.Size(linkType),
 	}
 
 	// if there are any conditions, there is a possibility of returning 0
@@ -119,29 +119,29 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 		case filterProtocolEther:
 			inst.append(checkEtherAddresses(p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolIP6:
-			inst.append(loadEtherKind)
-			inst.append(compareProtocolIP6(0, inst.skipToFail()))
+			inst.append(loadEtherKind(linkType))
+			inst.append(compareProtocolIP6(linkType, 0, inst.skipToFail()))
 			// ignore errors as it already has been validated
 			_, a6, _ := p.getAddrs()
-			inst.append(checkIP6HostAddresses(p.direction, a6[0], inst.skipToFail(), inst.skipToSucceed())...)
+			inst.append(checkIP6HostAddresses(linkType, p.direction, a6[0], inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolIP:
-			inst.append(loadEtherKind)
-			inst.append(compareProtocolIP4(0, inst.skipToFail()))
+			inst.append(loadEtherKind(linkType))
+			inst.append(compareProtocolIP4(linkType, 0, inst.skipToFail()))
 			// ignore errors as it already has been validated
 			a4, _, _ := p.getAddrs()
-			inst.append(checkIP4HostAddresses(p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
+			inst.append(checkIP4HostAddresses(linkType, p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolArp:
-			inst.append(loadEtherKind)
+			inst.append(loadEtherKind(linkType))
 			inst.append(compareProtocolArp(0, inst.skipToFail()))
 			// ignore errors as it already has been validated
 			a4, _, _ := p.getAddrs()
-			inst.append(checkIP4ArpAddresses(p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
+			inst.append(checkIP4ArpAddresses(linkType, p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolRarp:
-			inst.append(loadEtherKind)
+			inst.append(loadEtherKind(linkType))
 			inst.append(compareProtocolRarp(0, inst.skipToFail()))
 			// ignore errors as it already has been validated
 			a4, _, _ := p.getAddrs()
-			inst.append(checkIP4ArpAddresses(p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
+			inst.append(checkIP4ArpAddresses(linkType, p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolUnset:
 			// compare to the type
 
@@ -150,7 +150,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 			// it takes 2 steps to check the src or dst for ip4, 8 steps for ip6
 			a4, a6, _ := p.getAddrs()
 
-			inst.append(loadEtherKind)
+			inst.append(loadEtherKind(linkType))
 			if len(a4) > 0 {
 				var (
 					addressCheck uint8 = 2
@@ -158,25 +158,28 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				if p.direction == filterDirectionSrcOrDst || p.direction == filterDirectionSrcAndDst {
 					addressCheck = 4
 				}
-				inst.append(compareProtocolIP4(0, addressCheck))
+				inst.append(compareProtocolIP4(linkType, 0, addressCheck))
 				// compare IP addresses
-				inst.append(checkIP4HostAddresses(p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
-				// if Arp, go to arp addresses
-				inst.append(compareProtocolArp(1, 0))
-				// if not rarp, jump to next (if there is) or fail
-				nextStep := inst.skipToFail()
-				if len(a6) > 0 {
-					nextStep = 2
-					if p.direction == filterDirectionSrcOrDst || p.direction == filterDirectionSrcAndDst {
-						nextStep = 4
+				inst.append(checkIP4HostAddresses(linkType, p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
+				// ARP/RARP only exist on Ethernet
+				if linkType == LinkTypeEthernet {
+					// if Arp, go to arp addresses
+					inst.append(compareProtocolArp(1, 0))
+					// if not rarp, jump to next (if there is) or fail
+					nextStep := inst.skipToFail()
+					if len(a6) > 0 {
+						nextStep = 2
+						if p.direction == filterDirectionSrcOrDst || p.direction == filterDirectionSrcAndDst {
+							nextStep = 4
+						}
 					}
+					inst.append(compareProtocolRarp(0, nextStep))
+					inst.append(checkIP4ArpAddresses(linkType, p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
 				}
-				inst.append(compareProtocolRarp(0, nextStep))
-				inst.append(checkIP4ArpAddresses(p.direction, a4[0], inst.skipToFail(), inst.skipToSucceed())...)
 			}
 			if len(a6) > 0 {
-				inst.append(compareProtocolIP6(0, inst.skipToFail()))
-				inst.append(checkIP6HostAddresses(p.direction, a6[0], inst.skipToFail(), inst.skipToSucceed())...)
+				inst.append(compareProtocolIP6(linkType, 0, inst.skipToFail()))
+				inst.append(checkIP6HostAddresses(linkType, p.direction, a6[0], inst.skipToFail(), inst.skipToSucceed())...)
 			}
 		}
 	}
@@ -190,16 +193,16 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 		}
 
 		port := uint32(portInt)
-		inst.append(loadEtherKind)
+		inst.append(loadEtherKind(linkType))
 		switch p.protocol {
 		case filterProtocolIP6:
-			inst.append(compareProtocolIP6(0, inst.skipToFail()))
-			inst.append(loadIPv6Protocol)
+			inst.append(compareProtocolIP6(linkType, 0, inst.skipToFail()))
+			inst.append(loadIPv6Protocol(linkType))
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
-				inst.append(compareIPv6Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
+				inst.append(compareIPv6Protocol(linkType, ipProtocolTCP, 0, inst.skipToFail())...)
 			case filterSubProtocolUDP:
-				inst.append(compareIPv6Protocol(ipProtocolUDP, 0, inst.skipToFail())...)
+				inst.append(compareIPv6Protocol(linkType, ipProtocolUDP, 0, inst.skipToFail())...)
 			case filterSubProtocolStp:
 				inst.append(compareSubProtocolSctp(0, inst.skipToFail()))
 			case filterSubProtocolUnset:
@@ -208,10 +211,10 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				inst.append(compareSubProtocolUDP(0, inst.skipToFail()))
 			}
 			// compare IP addresses
-			inst.append(checkPorts(p.direction, port, inst.skipToFail(), inst.skipToSucceed(), true)...)
+			inst.append(checkPorts(linkType, p.direction, port, inst.skipToFail(), inst.skipToSucceed(), true)...)
 		case filterProtocolIP:
-			inst.append(compareProtocolIP4(0, inst.skipToFail()))
-			inst.append(loadIPv4Protocol)
+			inst.append(compareProtocolIP4(linkType, 0, inst.skipToFail()))
+			inst.append(loadIPv4Protocol(linkType))
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
 				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))
@@ -224,7 +227,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				inst.append(compareSubProtocolTCP(1, 0))
 				inst.append(compareSubProtocolUDP(0, inst.skipToFail()))
 			}
-			inst.append(checkPorts(p.direction, port, inst.skipToFail(), inst.skipToSucceed(), false)...)
+			inst.append(checkPorts(linkType, p.direction, port, inst.skipToFail(), inst.skipToSucceed(), false)...)
 		case filterProtocolUnset:
 			// this is a little backward, but I need to calculate how many steps in the
 			// ip6 section so I can know where the ip4 section starts
@@ -238,21 +241,21 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 			if p.direction == filterDirectionSrcOrDst || p.direction == filterDirectionSrcAndDst {
 				steps += 2
 			}
-			inst.append(compareProtocolIP6(0, steps))
-			inst.append(loadIPv6Protocol)
+			inst.append(compareProtocolIP6(linkType, 0, steps))
+			inst.append(loadIPv6Protocol(linkType))
 
 			/* TODO: FIX HERE
 			switch p.subProtocol {
 			case filterSubProtocolUDP:
 				inst.append(compareProtocolIP6(0, 5)) // size of compareIPv6Protocol
-				inst.append(compareIPv6Protocol(ipProtocolUDP, inst.skipToSucceed(), inst.skipToFail())...)
+				inst.append(compareIPv6Protocol(linkType, ipProtocolUDP, inst.skipToSucceed(), inst.skipToFail())...)
 				inst.append(compareProtocolIP4(0, inst.skipToFail()))
-				inst.append(compareIPv4Protocol(ipProtocolUDP, 0, inst.skipToFail())...)
+				inst.append(compareIPv4Protocol(linkType, ipProtocolUDP, 0, inst.skipToFail())...)
 			case filterSubProtocolTCP:
 				inst.append(compareProtocolIP6(0, 5)) // size of compareIPv6Protocol
-				inst.append(compareIPv6Protocol(ipProtocolTCP, inst.skipToSucceed(), inst.skipToFail())...)
+				inst.append(compareIPv6Protocol(linkType, ipProtocolTCP, inst.skipToSucceed(), inst.skipToFail())...)
 				inst.append(compareProtocolIP4(0, inst.skipToFail()))
-				inst.append(compareIPv4Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
+				inst.append(compareIPv4Protocol(linkType, ipProtocolTCP, 0, inst.skipToFail())...)
 			}
 			*/
 
@@ -268,9 +271,9 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				inst.append(compareSubProtocolTCP(1, 0))
 				inst.append(compareSubProtocolUDP(0, inst.skipToFail()))
 			}
-			inst.append(checkPorts(p.direction, port, inst.skipToFail(), inst.skipToSucceed(), true)...)
-			inst.append(compareProtocolIP4(0, inst.skipToFail()))
-			inst.append(loadIPv4Protocol)
+			inst.append(checkPorts(linkType, p.direction, port, inst.skipToFail(), inst.skipToSucceed(), true)...)
+			inst.append(compareProtocolIP4(linkType, 0, inst.skipToFail()))
+			inst.append(loadIPv4Protocol(linkType))
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
 				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))
@@ -283,7 +286,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				inst.append(compareSubProtocolTCP(1, 0))
 				inst.append(compareSubProtocolUDP(0, inst.skipToFail()))
 			}
-			inst.append(checkPorts(p.direction, port, inst.skipToFail(), inst.skipToSucceed(), false)...)
+			inst.append(checkPorts(linkType, p.direction, port, inst.skipToFail(), inst.skipToSucceed(), false)...)
 		}
 	}
 
@@ -291,25 +294,25 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 	if p.kind == filterKindNet {
 		switch p.protocol {
 		case filterProtocolIP6:
-			inst.append(loadEtherKind)
-			inst.append(compareProtocolIP6(0, inst.skipToFail()))
+			inst.append(loadEtherKind(linkType))
+			inst.append(compareProtocolIP6(linkType, 0, inst.skipToFail()))
 			// ignore errors as it already has been validated
 			addr, network, _ := getNetAndMask(p.id)
-			inst.append(checkIP6NetAddresses(p.direction, addr, network.Mask, inst.skipToFail(), inst.skipToSucceed())...)
+			inst.append(checkIP6NetAddresses(linkType, p.direction, addr, network.Mask, inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolIP:
-			inst.append(loadEtherKind)
-			inst.append(compareProtocolIP4(0, inst.skipToFail()))
-			inst.append(checkIP4NetHostAddresses(p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
+			inst.append(loadEtherKind(linkType))
+			inst.append(compareProtocolIP4(linkType, 0, inst.skipToFail()))
+			inst.append(checkIP4NetHostAddresses(linkType, p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolArp:
-			inst.append(loadEtherKind)
+			inst.append(loadEtherKind(linkType))
 			inst.append(compareProtocolArp(0, inst.skipToFail()))
-			inst.append(checkIP4NetArpAddresses(p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
+			inst.append(checkIP4NetArpAddresses(linkType, p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolRarp:
-			inst.append(loadEtherKind)
+			inst.append(loadEtherKind(linkType))
 			inst.append(compareProtocolRarp(0, inst.skipToFail()))
-			inst.append(checkIP4NetArpAddresses(p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
+			inst.append(checkIP4NetArpAddresses(linkType, p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
 		case filterProtocolUnset:
-			inst.append(loadEtherKind)
+			inst.append(loadEtherKind(linkType))
 			// more complicated. try each of several - if it is IP, next 4 are for the address
 			// ignore error since it already was validated
 			addr, network, _ := getNetAndMask(p.id)
@@ -321,29 +324,32 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				if p.direction == filterDirectionSrcOrDst || p.direction == filterDirectionSrcAndDst {
 					addressCheck *= 2
 				}
-				inst.append(compareProtocolIP4(0, addressCheck))
+				inst.append(compareProtocolIP4(linkType, 0, addressCheck))
 				// compare IP addresses
-				inst.append(checkIP4NetHostAddresses(p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
-				// if Arp, go to arp addresses
-				inst.append(compareProtocolArp(1, 0))
-				// if not rarp, nothing left
-				inst.append(compareProtocolRarp(0, inst.skipToFail()))
-				// compare arp/rarp addresses
-				inst.append(checkIP4NetArpAddresses(p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
+				inst.append(checkIP4NetHostAddresses(linkType, p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
+				// ARP/RARP only exist on Ethernet
+				if linkType == LinkTypeEthernet {
+					// if Arp, go to arp addresses
+					inst.append(compareProtocolArp(1, 0))
+					// if not rarp, nothing left
+					inst.append(compareProtocolRarp(0, inst.skipToFail()))
+					// compare arp/rarp addresses
+					inst.append(checkIP4NetArpAddresses(linkType, p.direction, p.id, inst.skipToFail(), inst.skipToSucceed())...)
+				}
 			} else {
-				inst.append(compareProtocolIP6(0, inst.skipToFail()))
-				inst.append(checkIP6NetAddresses(p.direction, addr, network.Mask, inst.skipToFail(), inst.skipToSucceed())...)
+				inst.append(compareProtocolIP6(linkType, 0, inst.skipToFail()))
+				inst.append(checkIP6NetAddresses(linkType, p.direction, addr, network.Mask, inst.skipToFail(), inst.skipToSucceed())...)
 			}
 		}
 	}
 
 	// unset
 	if p.kind == filterKindUnset {
-		inst.append(loadEtherKind)
+		inst.append(loadEtherKind(linkType))
 		switch p.protocol {
 		case filterProtocolIP:
-			inst.append(compareProtocolIP4(0, inst.skipToFail()))
-			inst.append(loadIPv4Protocol)
+			inst.append(compareProtocolIP4(linkType, 0, inst.skipToFail()))
+			inst.append(loadIPv4Protocol(linkType))
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
 				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))
@@ -351,12 +357,12 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				inst.append(compareSubProtocolUDP(0, inst.skipToFail()))
 			}
 		case filterProtocolIP6:
-			inst.append(compareProtocolIP6(0, inst.skipToFail()))
+			inst.append(compareProtocolIP6(linkType, 0, inst.skipToFail()))
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
-				inst.append(compareIPv6Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
+				inst.append(compareIPv6Protocol(linkType, ipProtocolTCP, 0, inst.skipToFail())...)
 			case filterSubProtocolUDP:
-				inst.append(compareIPv6Protocol(ipProtocolUDP, 0, inst.skipToFail())...)
+				inst.append(compareIPv6Protocol(linkType, ipProtocolUDP, 0, inst.skipToFail())...)
 			}
 		case filterProtocolArp:
 			inst.append(compareProtocolArp(0, inst.skipToFail()))
@@ -365,9 +371,9 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 		case filterProtocolEther:
 			switch p.subProtocol {
 			case filterSubProtocolIP:
-				inst.append(compareProtocolIP4(0, inst.skipToFail()))
+				inst.append(compareProtocolIP4(linkType, 0, inst.skipToFail()))
 			case filterSubProtocolIP6:
-				inst.append(compareProtocolIP6(0, inst.skipToFail()))
+				inst.append(compareProtocolIP6(linkType, 0, inst.skipToFail()))
 			case filterSubProtocolArp:
 				inst.append(compareProtocolArp(0, inst.skipToFail()))
 			case filterSubProtocolRarp:
@@ -377,15 +383,15 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 			// kind is unset, and protocol is unset, so subprotocol must be set or it would have failed vaildation
 			switch p.subProtocol {
 			case filterSubProtocolUDP:
-				inst.append(compareProtocolIP6(0, 5)) // size of compareIPv6Protocol
-				inst.append(compareIPv6Protocol(ipProtocolUDP, inst.skipToSucceed(), inst.skipToFail())...)
-				inst.append(compareProtocolIP4(0, inst.skipToFail()))
-				inst.append(compareIPv4Protocol(ipProtocolUDP, 0, inst.skipToFail())...)
+				inst.append(compareProtocolIP6(linkType, 0, 5)) // size of compareIPv6Protocol
+				inst.append(compareIPv6Protocol(linkType, ipProtocolUDP, inst.skipToSucceed(), inst.skipToFail())...)
+				inst.append(compareProtocolIP4(linkType, 0, inst.skipToFail()))
+				inst.append(compareIPv4Protocol(linkType, ipProtocolUDP, 0, inst.skipToFail())...)
 			case filterSubProtocolTCP:
-				inst.append(compareProtocolIP6(0, 5)) // size of compareIPv6Protocol
-				inst.append(compareIPv6Protocol(ipProtocolTCP, inst.skipToSucceed(), inst.skipToFail())...)
-				inst.append(compareProtocolIP4(0, inst.skipToFail()))
-				inst.append(compareIPv4Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
+				inst.append(compareProtocolIP6(linkType, 0, 5)) // size of compareIPv6Protocol
+				inst.append(compareIPv6Protocol(linkType, ipProtocolTCP, inst.skipToSucceed(), inst.skipToFail())...)
+				inst.append(compareProtocolIP4(linkType, 0, inst.skipToFail()))
+				inst.append(compareIPv4Protocol(linkType, ipProtocolTCP, 0, inst.skipToFail())...)
 			}
 		}
 	}
@@ -493,18 +499,18 @@ func (p primitive) validate() error {
 }
 
 // Size how many instructions do we expect
-func (p primitive) Size() uint8 {
+func (p primitive) Size(linkType uint32) uint8 {
 	var instCount uint8
 	// if there are any conditions, there is a possibility of returning 0
 	switch p.kind {
 	case filterKindHost:
-		instCount += p.calculateStepsKindHost()
+		instCount += p.calculateStepsKindHost(linkType)
 	case filterKindPort:
 		instCount += p.calculateStepsKindPort()
 	case filterKindUnset:
 		instCount += p.calculateStepsKindUnset()
 	case filterKindNet:
-		instCount += p.calculateStepsKindNet()
+		instCount += p.calculateStepsKindNet(linkType)
 	}
 
 	return instCount + 2
@@ -535,7 +541,7 @@ func (p primitive) getAddrs() ([]net.IP, []net.IP, error) {
 }
 
 // calculateStepsKindHost determine the number of steps for a filter of kind host
-func (p primitive) calculateStepsKindHost() uint8 {
+func (p primitive) calculateStepsKindHost(linkType uint32) uint8 {
 	// do we need to use separate locations to check for the src and/or dst?
 	// only if the protocol is arp/rarp *and* ip
 	var (
@@ -569,12 +575,20 @@ func (p primitive) calculateStepsKindHost() uint8 {
 		// it takes 2 steps to check the src or dst for ip4, 8 steps for ip6
 		a4, a6, _ := p.getAddrs()
 		// it takes 2 steps for each src or dst in ip4
-		// and then another 2 steps for each src or dst in arp/rarp
-		dirCount = dirCount + uint8((2+2)*len(a4))
+		dirCount = dirCount + uint8(2*len(a4))
+		// ARP/RARP only exist on Ethernet
+		if linkType == LinkTypeEthernet {
+			// and then another 2 steps for each src or dst in arp/rarp
+			dirCount = dirCount + uint8(2*len(a4))
+		}
 		// it takes 8 steps for each src or dst in ip6
 		dirCount = dirCount + uint8(8*len(a6))
 		if len(a4) > 0 {
-			count += 3 // compare ip4, arp, rarp
+			if linkType == LinkTypeEthernet {
+				count += 3 // compare ip4, arp, rarp
+			} else {
+				count++ // compare ip4 only
+			}
 		}
 		if len(a6) > 0 {
 			count++ // compare ip6
@@ -594,7 +608,7 @@ func (p primitive) calculateStepsKindHost() uint8 {
 }
 
 // calculateStepsKindNet determine the number of steps for a filter of kind net
-func (p primitive) calculateStepsKindNet() uint8 {
+func (p primitive) calculateStepsKindNet(linkType uint32) uint8 {
 	// do we need to use separate locations to check for the src and/or dst?
 	// only if the protocol is arp/rarp *and* ip
 	var (
@@ -630,9 +644,15 @@ func (p primitive) calculateStepsKindNet() uint8 {
 		if addr.To4() != nil {
 			// it takes 2 steps for each src or dst in ip4
 			dirCount += 2
-			// compare to the 3 types
-			count += 3
-			doubler = true
+			// ARP/RARP only exist on Ethernet
+			if linkType == LinkTypeEthernet {
+				// compare to the 3 types (IP, ARP, RARP)
+				count += 3
+				doubler = true
+			} else {
+				// compare to only IP
+				count++
+			}
 			maskFull = ip4MaskFull
 		} else {
 			dirCount += calculateIP6MaskSteps(network.Mask)

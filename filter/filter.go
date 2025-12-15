@@ -8,9 +8,9 @@ import (
 
 // Filter constructed of a tcpdump filter expression
 type Filter interface {
-	Compile() ([]bpf.Instruction, error)
+	Compile(linkType uint32) ([]bpf.Instruction, error)
 	Equal(o Filter) bool
-	Size() uint8
+	Size(linkType uint32) uint8
 	IsPrimitive() bool
 	Type() ElementType
 	Distill() Filter

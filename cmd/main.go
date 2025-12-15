@@ -59,7 +59,7 @@ var rootCmd = &cobra.Command{
 			}
 		} else {
 			for packet := range handle.Listen() {
-				processPacket(gopacket.NewPacket(packet.B, layers.LayerTypeEthernet, gopacket.Default), count)
+				processPacket(gopacket.NewPacket(packet.B, layers.LinkType(handle.LinkType()), gopacket.Default), count)
 				count++
 			}
 		}
@@ -79,7 +79,13 @@ func processPacket(packet gopacket.Packet, count int) {
 		fmt.Printf("%d: IP packet ", count)
 		// Get actual IP data from this layer
 		ip, _ := ipLayer.(*layers.IPv4)
-		fmt.Printf("From src %d to dst %d\n", ip.SrcIP, ip.DstIP)
+		fmt.Printf("From src %s to dst %s\n", ip.SrcIP, ip.DstIP)
+	}
+	if ipLayer := packet.Layer(layers.LayerTypeIPv6); ipLayer != nil {
+		fmt.Printf("%d: IP packet ", count)
+		// Get actual IP data from this layer
+		ip, _ := ipLayer.(*layers.IPv6)
+		fmt.Printf("From src %s to dst %s\n", ip.SrcIP, ip.DstIP)
 	}
 	if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
 		fmt.Printf("%d: UDP packet ", count)

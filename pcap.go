@@ -70,7 +70,7 @@ func (h *Handle) SetBPFFilter(expr string) error {
 		return fmt.Errorf("no expression received for filter '%s'", expr)
 	}
 	f := e.Compile()
-	instructions, err := f.Compile()
+	instructions, err := f.Compile(h.linkType)
 	if err != nil {
 		return fmt.Errorf("failed to compile filter into instructions: %v", err)
 	}
