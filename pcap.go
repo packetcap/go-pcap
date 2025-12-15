@@ -33,12 +33,6 @@ func OpenLive(device string, snaplen int32, promiscuous bool, timeout time.Durat
 	if err != nil {
 		return nil, err
 	}
-	if timeout > 0 {
-		go func() {
-			time.Sleep(timeout)
-			handle.Close()
-		}()
-	}
 	return handle, err
 }
 
