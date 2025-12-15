@@ -31,7 +31,7 @@ for {
 }
 ```
 
-`ReadPacketData()` will block until there is packet information available, or until `timeout` is reached. You can set an infinite timeout with `0`.
+`ReadPacketData()` will block until there is packet information available, or until `timeout` is reached. You can set an infinite timeout with `0`. If the timeout is reached, `ReadPacketData()` will return `context.DeadlineExceeded` error.
 
 The returned information will be the packet bytes themselves, excluding the system-defined headers, i.e. the Ethernet frame and all contents.
 
