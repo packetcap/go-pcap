@@ -65,8 +65,10 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	rfd := pipefd[0]
 	wfd := pipefd[1]
 
-	defer unix.Close(rfd)
-	defer unix.Close(wfd)
+	defer func() {
+		_ = unix.Close(rfd)
+		_ = unix.Close(wfd)
+	}()
 
 	// Make pipe non-blocking
 	_ = unix.SetNonblock(rfd, true)
