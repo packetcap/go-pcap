@@ -31,9 +31,9 @@ jobs:
       - name: Install dependencies
         run: go mod download
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.5.0
+          version: v2.12.0
 
       - name: Format check
         run: make fmt-check
