@@ -303,7 +303,7 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 		logger.Debugf("binary parsing packet header of size %d", buf.Len())
 		if err := binary.Read(buf, h.endian, &hdr); err != nil {
 			msg := fmt.Sprintf("error reading tpacket3 header on byte %d: %v", i, err)
-			logger.Errorf(msg)
+			logger.Error(msg)
 			return nil, errors.New(msg)
 		}
 		logger.Debugf("tpacket3 header %#v", hdr)
