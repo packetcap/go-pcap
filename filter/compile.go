@@ -13,43 +13,118 @@ import (
 // https://www.tcpdump.org/manpages/pcap-filter.7.html and return
 // bpf instructions
 
-var (
-	ip4MaskFull                  = net.CIDRMask(32, 32)   //[]byte{0xff, 0xff, 0xff, 0xff}
-	ip6MaskFull                  = net.CIDRMask(128, 128) //[]byte{0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff}
-	returnDrop                   = bpf.RetConstant{Val: 0}
-	returnKeep                   = bpf.RetConstant{Val: 0x40000}
-	loadIPv4SourcePort           = bpf.LoadIndirect{Off: ip4SourcePort, Size: lengthHalf}
-	loadIPv4DestinationPort      = bpf.LoadIndirect{Off: ip4DestinationPort, Size: lengthHalf}
-	loadIPv6SourcePort           = bpf.LoadAbsolute{Off: ip6SourcePort, Size: lengthHalf}
-	loadIPv6DestinationPort      = bpf.LoadAbsolute{Off: ip6DestinationPort, Size: lengthHalf}
-	loadEtherKind                = bpf.LoadAbsolute{Off: 12, Size: lengthHalf}
-	loadIPv4SourceAddress        = bpf.LoadAbsolute{Off: 26, Size: lengthWord}
-	loadIPv4DestinationAddress   = bpf.LoadAbsolute{Off: 30, Size: lengthWord}
-	loadArpSenderAddress         = bpf.LoadAbsolute{Off: 28, Size: lengthWord}
-	loadArpTargetAddress         = bpf.LoadAbsolute{Off: 38, Size: lengthWord}
-	loadIPv4Protocol             = bpf.LoadAbsolute{Off: 23, Size: lengthByte}
-	loadIPv6Protocol             = bpf.LoadAbsolute{Off: 20, Size: lengthByte}
-	loadIPv6ContinuationProtocol = bpf.LoadAbsolute{Off: 54, Size: lengthByte}
-	loadEthernetSourceFirst      = bpf.LoadAbsolute{Off: 6, Size: lengthHalf}
-	loadEthernetSourceLast       = bpf.LoadAbsolute{Off: 8, Size: lengthWord}
-	loadEthernetDestinationFirst = bpf.LoadAbsolute{Off: 0, Size: lengthHalf}
-	loadEthernetDestinationLast  = bpf.LoadAbsolute{Off: 2, Size: lengthWord}
+const (
+	// Link layer header sizes
+	LinkTypeNull     uint32 = 0x0  // BSD loopback - see constants.LinkTypeNull
+	LinkTypeEthernet uint32 = 0x01 // Ethernet - see constants.LinkTypeEthernet
 )
 
-func loadIPv4HeaderOffset(skipFail uint8) []bpf.Instruction {
+var (
+	ip4MaskFull = net.CIDRMask(32, 32)   //[]byte{0xff, 0xff, 0xff, 0xff}
+	ip6MaskFull = net.CIDRMask(128, 128) //[]byte{0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff}
+	returnDrop  = bpf.RetConstant{Val: 0}
+	returnKeep  = bpf.RetConstant{Val: 0x40000}
+)
+
+// linkTypeOffset returns the link layer header size for a given link type
+func linkTypeOffset(linkType uint32) uint32 {
+	if linkType == LinkTypeNull {
+		return 4 // BSD loopback header
+	}
+	return 14 // Ethernet header (default)
+}
+
+// Dynamic offset calculation functions
+func loadEtherKind(linkType uint32) bpf.Instruction {
+	// For BSD loopback, the protocol family is at offset 0 (not 12 like Ethernet EtherType)
+	if linkType == LinkTypeNull {
+		return bpf.LoadAbsolute{Off: 0, Size: lengthWord} // 4-byte protocol family
+	}
+	return bpf.LoadAbsolute{Off: 12, Size: lengthHalf} // EtherType at offset 12
+}
+
+func loadIPv4SourceAddress(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 12, Size: lengthWord}
+}
+
+func loadIPv4DestinationAddress(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 16, Size: lengthWord}
+}
+
+func loadArpSenderAddress(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 14, Size: lengthWord}
+}
+
+func loadArpTargetAddress(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 24, Size: lengthWord}
+}
+
+func loadIPv4SourcePort(linkType uint32) bpf.Instruction {
+	return bpf.LoadIndirect{Off: linkTypeOffset(linkType), Size: lengthHalf}
+}
+
+func loadIPv4DestinationPort(linkType uint32) bpf.Instruction {
+	return bpf.LoadIndirect{Off: linkTypeOffset(linkType) + 2, Size: lengthHalf}
+}
+
+func loadIPv4Protocol(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 9, Size: lengthByte}
+}
+
+func loadIPv6SourcePort(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 40, Size: lengthHalf}
+}
+
+func loadIPv6DestinationPort(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 42, Size: lengthHalf}
+}
+
+func loadIPv6Protocol(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 6, Size: lengthByte}
+}
+
+func loadIPv6ContinuationProtocol(linkType uint32) bpf.Instruction {
+	return bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 40, Size: lengthByte}
+}
+
+func loadEthernetSourceFirst() bpf.Instruction {
+	return bpf.LoadAbsolute{Off: 6, Size: lengthHalf}
+}
+
+func loadEthernetSourceLast() bpf.Instruction {
+	return bpf.LoadAbsolute{Off: 8, Size: lengthWord}
+}
+
+func loadEthernetDestinationFirst() bpf.Instruction {
+	return bpf.LoadAbsolute{Off: 0, Size: lengthHalf}
+}
+
+func loadEthernetDestinationLast() bpf.Instruction {
+	return bpf.LoadAbsolute{Off: 2, Size: lengthWord}
+}
+
+func loadIPv4HeaderOffset(linkType uint32, skipFail uint8) []bpf.Instruction {
 	return []bpf.Instruction{
-		bpf.LoadAbsolute{Off: ip4HeaderFlags, Size: lengthHalf},                  // flags+fragment offset, since we need to calc where the src/dst port is
+		bpf.LoadAbsolute{Off: linkTypeOffset(linkType) + 6, Size: lengthHalf},    // flags+fragment offset (IPv4 header offset 6), since we need to calc where the src/dst port is
 		bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: jumpMask, SkipTrue: skipFail - 1}, // do we have an L4 header?
-		bpf.LoadMemShift{Off: ip4HeaderSize},                                     // calculate size of IP header
+		bpf.LoadMemShift{Off: linkTypeOffset(linkType)},                          // calculate size of IP header (starting from link layer size)
 	}
 }
 
-func compareProtocolIP4(skipTrue, skipFalse uint8) bpf.Instruction {
-	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: etherTypeIPv4, SkipFalse: skipFalse, SkipTrue: skipTrue}
+func compareProtocolIP4(linkType uint32, skipTrue, skipFalse uint8) bpf.Instruction {
+	val := etherTypeIPv4
+	if linkType == LinkTypeNull {
+		val = afInet
+	}
+	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: val, SkipFalse: skipFalse, SkipTrue: skipTrue}
 }
 
-func compareProtocolIP6(skipTrue, skipFalse uint8) bpf.Instruction {
-	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: etherTypeIPv6, SkipFalse: skipFalse, SkipTrue: skipTrue}
+func compareProtocolIP6(linkType uint32, skipTrue, skipFalse uint8) bpf.Instruction {
+	val := etherTypeIPv6
+	if linkType == LinkTypeNull {
+		val = afInet6
+	}
+	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: val, SkipFalse: skipFalse, SkipTrue: skipTrue}
 }
 
 func compareProtocolArp(skipTrue, skipFalse uint8) bpf.Instruction {
@@ -72,7 +147,7 @@ func compareSubProtocolSctp(skipTrue, skipFalse uint8) bpf.Instruction {
 	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: ipProtocolSctp, SkipFalse: skipFalse, SkipTrue: skipTrue}
 }
 
-func compareIPv6Protocol(proto uint32, skipTrue, skipFalse uint8) []bpf.Instruction {
+func compareIPv6Protocol(linkType uint32, proto uint32, skipTrue, skipFalse uint8) []bpf.Instruction {
 	st, sf := skipTrue, skipFalse
 	if st == 0 {
 		st = 4
@@ -81,15 +156,15 @@ func compareIPv6Protocol(proto uint32, skipTrue, skipFalse uint8) []bpf.Instruct
 		sf = 4
 	}
 	return []bpf.Instruction{
-		loadIPv6Protocol,
+		loadIPv6Protocol(linkType),
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: 0, SkipTrue: st - 1},
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ip6ContinuationPacket, SkipFalse: sf - 2},
-		loadIPv6ContinuationProtocol,
+		loadIPv6ContinuationProtocol(linkType),
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: sf - 4, SkipTrue: st - 4},
 	}
 }
 
-func compareIPv4Protocol(proto uint32, skipTrue, skipFalse uint8) []bpf.Instruction {
+func compareIPv4Protocol(linkType uint32, proto uint32, skipTrue, skipFalse uint8) []bpf.Instruction {
 	st, sf := skipTrue, skipFalse
 	if st == 0 {
 		st = 1
@@ -98,7 +173,7 @@ func compareIPv4Protocol(proto uint32, skipTrue, skipFalse uint8) []bpf.Instruct
 		sf = 1
 	}
 	return []bpf.Instruction{
-		loadIPv4Protocol,
+		loadIPv4Protocol(linkType),
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: sf - 1, SkipTrue: st - 1},
 	}
 }
@@ -119,48 +194,48 @@ func checkEtherAddresses(direction filterDirection, addr string, fail, succeed u
 
 	switch direction {
 	case filterDirectionSrc:
-		inst = append(inst, loadEthernetSourceLast)
+		inst = append(inst, loadEthernetSourceLast())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: lastFour, SkipFalse: fail - 1})
-		inst = append(inst, loadEthernetSourceFirst)
+		inst = append(inst, loadEthernetSourceFirst())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: firstTwo, SkipTrue: succeed - 3, SkipFalse: fail - 3})
 	case filterDirectionDst:
-		inst = append(inst, loadEthernetDestinationLast)
+		inst = append(inst, loadEthernetDestinationLast())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: lastFour, SkipFalse: fail - 1})
-		inst = append(inst, loadEthernetDestinationFirst)
+		inst = append(inst, loadEthernetDestinationFirst())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: firstTwo, SkipTrue: succeed - 3, SkipFalse: fail - 3})
 	case filterDirectionSrcOrDst:
-		inst = append(inst, loadEthernetSourceLast)
+		inst = append(inst, loadEthernetSourceLast())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: lastFour, SkipFalse: 2})
-		inst = append(inst, loadEthernetSourceFirst)
+		inst = append(inst, loadEthernetSourceFirst())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: firstTwo, SkipTrue: succeed - 3})
-		inst = append(inst, loadEthernetDestinationLast)
+		inst = append(inst, loadEthernetDestinationLast())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: lastFour, SkipFalse: fail - 5})
-		inst = append(inst, loadEthernetDestinationFirst)
+		inst = append(inst, loadEthernetDestinationFirst())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: firstTwo, SkipTrue: succeed - 7, SkipFalse: fail - 7})
 	case filterDirectionSrcAndDst:
-		inst = append(inst, loadEthernetSourceLast)
+		inst = append(inst, loadEthernetSourceLast())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: lastFour, SkipFalse: fail - 1})
-		inst = append(inst, loadEthernetSourceFirst)
+		inst = append(inst, loadEthernetSourceFirst())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: firstTwo, SkipFalse: fail - 3})
-		inst = append(inst, loadEthernetDestinationLast)
+		inst = append(inst, loadEthernetDestinationLast())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: lastFour, SkipFalse: fail - 5})
-		inst = append(inst, loadEthernetDestinationFirst)
+		inst = append(inst, loadEthernetDestinationFirst())
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: firstTwo, SkipFalse: fail - 7})
 	}
 	return inst
 }
 
 // checkIP4HostAddresses check for host addresses
-func checkIP4HostAddresses(direction filterDirection, addr net.IP, fail, succeed uint8) []bpf.Instruction {
-	return checkIP4Addresses(direction, addr, nil, fail, succeed, loadIPv4SourceAddress, loadIPv4DestinationAddress)
+func checkIP4HostAddresses(linkType uint32, direction filterDirection, addr net.IP, fail, succeed uint8) []bpf.Instruction {
+	return checkIP4Addresses(linkType, direction, addr, nil, fail, succeed, loadIPv4SourceAddress, loadIPv4DestinationAddress)
 }
 
 // checkIP4ArpAddresses check for arp addresses
-func checkIP4ArpAddresses(direction filterDirection, addr net.IP, fail, succeed uint8) []bpf.Instruction {
-	return checkIP4Addresses(direction, addr, nil, fail, succeed, loadArpSenderAddress, loadArpTargetAddress)
+func checkIP4ArpAddresses(linkType uint32, direction filterDirection, addr net.IP, fail, succeed uint8) []bpf.Instruction {
+	return checkIP4Addresses(linkType, direction, addr, nil, fail, succeed, loadArpSenderAddress, loadArpTargetAddress)
 }
 
-func checkIP4NetAddresses(direction filterDirection, addr string, ip bool, fail, succeed uint8) []bpf.Instruction {
+func checkIP4NetAddresses(linkType uint32, direction filterDirection, addr string, ip bool, fail, succeed uint8) []bpf.Instruction {
 	// maskCheck is used for networks where a CIDR is supplied, so we need to check if the mask is valid
 	// ignore error since it already was validated
 	addrBytes, network, _ := getNetAndMask(addr)
@@ -175,20 +250,20 @@ func checkIP4NetAddresses(direction filterDirection, addr string, ip bool, fail,
 	if !ip {
 		loadSource, loadDestination = loadArpSenderAddress, loadArpTargetAddress
 	}
-	return checkIP4Addresses(direction, addrBytes, maskCheck, fail, succeed, loadSource, loadDestination)
+	return checkIP4Addresses(linkType, direction, addrBytes, maskCheck, fail, succeed, loadSource, loadDestination)
 }
 
-func checkIP4NetHostAddresses(direction filterDirection, addr string, fail, succeed uint8) []bpf.Instruction {
-	return checkIP4NetAddresses(direction, addr, true, fail, succeed)
+func checkIP4NetHostAddresses(linkType uint32, direction filterDirection, addr string, fail, succeed uint8) []bpf.Instruction {
+	return checkIP4NetAddresses(linkType, direction, addr, true, fail, succeed)
 }
-func checkIP4NetArpAddresses(direction filterDirection, addr string, fail, succeed uint8) []bpf.Instruction {
-	return checkIP4NetAddresses(direction, addr, false, fail, succeed)
+func checkIP4NetArpAddresses(linkType uint32, direction filterDirection, addr string, fail, succeed uint8) []bpf.Instruction {
+	return checkIP4NetAddresses(linkType, direction, addr, false, fail, succeed)
 }
 
 // checkIP4Addresses add steps to check IPv4 addresses
 // fail and succeed are the number of steps to skip the succeed or fail instructions.
 // For example, if the next one is succeed, then succeed will be 0
-func checkIP4Addresses(direction filterDirection, addr []byte, maskCheck *bpf.ALUOpConstant, fail, succeed uint8, loadSource, loadTarget bpf.Instruction) []bpf.Instruction {
+func checkIP4Addresses(linkType uint32, direction filterDirection, addr []byte, maskCheck *bpf.ALUOpConstant, fail, succeed uint8, loadSource, loadTarget func(uint32) bpf.Instruction) []bpf.Instruction {
 	inst := make([]bpf.Instruction, 0)
 	if addr == nil {
 		return nil
@@ -199,35 +274,35 @@ func checkIP4Addresses(direction filterDirection, addr []byte, maskCheck *bpf.AL
 
 	switch direction {
 	case filterDirectionSrc:
-		inst = append(inst, loadSource)
+		inst = append(inst, loadSource(linkType))
 		if maskCheck != nil {
 			inst = append(inst, *maskCheck)
 		}
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: addrVal, SkipTrue: succeed - uint8(len(inst)), SkipFalse: fail - uint8(len(inst))})
 	case filterDirectionDst:
-		inst = append(inst, loadTarget)
+		inst = append(inst, loadTarget(linkType))
 		if maskCheck != nil {
 			inst = append(inst, *maskCheck)
 		}
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: addrVal, SkipTrue: succeed - uint8(len(inst)), SkipFalse: fail - uint8(len(inst))})
 	case filterDirectionSrcOrDst:
-		inst = append(inst, loadSource)
+		inst = append(inst, loadSource(linkType))
 		if maskCheck != nil {
 			inst = append(inst, *maskCheck)
 		}
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: addrVal, SkipTrue: succeed - uint8(len(inst))})
-		inst = append(inst, loadTarget)
+		inst = append(inst, loadTarget(linkType))
 		if maskCheck != nil {
 			inst = append(inst, *maskCheck)
 		}
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: addrVal, SkipTrue: succeed - uint8(len(inst)), SkipFalse: fail - uint8(len(inst))})
 	case filterDirectionSrcAndDst:
-		inst = append(inst, loadSource)
+		inst = append(inst, loadSource(linkType))
 		if maskCheck != nil {
 			inst = append(inst, *maskCheck)
 		}
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: addrVal, SkipFalse: fail - uint8(len(inst))})
-		inst = append(inst, loadTarget)
+		inst = append(inst, loadTarget(linkType))
 		if maskCheck != nil {
 			inst = append(inst, *maskCheck)
 		}
@@ -237,19 +312,19 @@ func checkIP4Addresses(direction filterDirection, addr []byte, maskCheck *bpf.AL
 }
 
 // checkIP6HostAddresses check for host addresses
-func checkIP6HostAddresses(direction filterDirection, addr net.IP, fail, succeed uint8) []bpf.Instruction {
-	return checkIP6Addresses(direction, addr, nil, fail, succeed)
+func checkIP6HostAddresses(linkType uint32, direction filterDirection, addr net.IP, fail, succeed uint8) []bpf.Instruction {
+	return checkIP6Addresses(linkType, direction, addr, nil, fail, succeed)
 }
 
 // checkIP6NetAddresses check for net addresses
-func checkIP6NetAddresses(direction filterDirection, addr net.IP, mask net.IPMask, fail, succeed uint8) []bpf.Instruction {
-	return checkIP6Addresses(direction, addr, mask, fail, succeed)
+func checkIP6NetAddresses(linkType uint32, direction filterDirection, addr net.IP, mask net.IPMask, fail, succeed uint8) []bpf.Instruction {
+	return checkIP6Addresses(linkType, direction, addr, mask, fail, succeed)
 }
 
 // checkIP6Addresses add steps to check IPv6 addresses
 // fail and succeed are the number of steps to skip the succeed or fail instructions.
 // For example, if the next one is succeed, then succeed will be 0
-func checkIP6Addresses(direction filterDirection, addr []byte, mask net.IPMask, fail, succeed uint8) []bpf.Instruction {
+func checkIP6Addresses(linkType uint32, direction filterDirection, addr []byte, mask net.IPMask, fail, succeed uint8) []bpf.Instruction {
 	inst := make([]bpf.Instruction, 0)
 
 	// need each chunk of 4 bytes
@@ -259,22 +334,22 @@ func checkIP6Addresses(direction filterDirection, addr []byte, mask net.IPMask, 
 
 	switch direction {
 	case filterDirectionSrc:
-		inst = append(inst, loadAndCompareIPv6SourceAddress(addrArray, mask, succeed, fail)...)
+		inst = append(inst, loadAndCompareIPv6SourceAddress(linkType, addrArray, mask, succeed, fail)...)
 	case filterDirectionDst:
-		inst = append(inst, loadAndCompareIPv6DestinationAddress(addrArray, mask, succeed, fail)...)
+		inst = append(inst, loadAndCompareIPv6DestinationAddress(linkType, addrArray, mask, succeed, fail)...)
 	case filterDirectionSrcOrDst:
-		inst = append(inst, loadAndCompareIPv6SourceAddress(addrArray, mask, succeed, 0)...)
-		inst = append(inst, loadAndCompareIPv6DestinationAddress(addrArray, mask, succeed-uint8(len(inst)), fail-uint8(len(inst)))...)
+		inst = append(inst, loadAndCompareIPv6SourceAddress(linkType, addrArray, mask, succeed, 0)...)
+		inst = append(inst, loadAndCompareIPv6DestinationAddress(linkType, addrArray, mask, succeed-uint8(len(inst)), fail-uint8(len(inst)))...)
 	case filterDirectionSrcAndDst:
-		inst = append(inst, loadAndCompareIPv6SourceAddress(addrArray, mask, 0, fail)...)
-		inst = append(inst, loadAndCompareIPv6DestinationAddress(addrArray, mask, succeed-uint8(len(inst)), fail-uint8(len(inst)))...)
+		inst = append(inst, loadAndCompareIPv6SourceAddress(linkType, addrArray, mask, 0, fail)...)
+		inst = append(inst, loadAndCompareIPv6DestinationAddress(linkType, addrArray, mask, succeed-uint8(len(inst)), fail-uint8(len(inst)))...)
 	}
 	return inst
 }
 
 // fail and succeed are the number of steps to skip the succeed or fail instructions.
 // For example, if the next one is succeed, then succeed will be 0
-func checkPorts(direction filterDirection, port uint32, fail, succeed uint8, ip6 bool) []bpf.Instruction {
+func checkPorts(linkType uint32, direction filterDirection, port uint32, fail, succeed uint8, ip6 bool) []bpf.Instruction {
 	inst := make([]bpf.Instruction, 0)
 
 	var (
@@ -282,13 +357,13 @@ func checkPorts(direction filterDirection, port uint32, fail, succeed uint8, ip6
 	)
 
 	if ip6 {
-		loadSource = loadIPv6SourcePort
-		loadDestination = loadIPv6DestinationPort
+		loadSource = loadIPv6SourcePort(linkType)
+		loadDestination = loadIPv6DestinationPort(linkType)
 	} else {
-		loadSource = loadIPv4SourcePort
-		loadDestination = loadIPv4DestinationPort
+		loadSource = loadIPv4SourcePort(linkType)
+		loadDestination = loadIPv4DestinationPort(linkType)
 		preInst := len(inst)
-		inst = append(inst, loadIPv4HeaderOffset(fail)...)
+		inst = append(inst, loadIPv4HeaderOffset(linkType, fail)...)
 		postInst := len(inst)
 		diff := uint8(postInst - preInst)
 		//
@@ -362,27 +437,27 @@ func calculateIP6MaskSteps(mask net.IPMask) uint8 {
 // are the number of steps to skip to true or false. If 0, then it means immediately after the
 // steps in this section, not absolute. Since the number of steps in this section can change,
 // it is important to know if it is absolute (positive number) or just right after (0).
-func loadAndCompareIPv6SourceAddress(addr [4]uint32, mask net.IPMask, skipTrue, skipFalse uint8) []bpf.Instruction {
-	return loadAndCompareIPv6Address(addr, mask, true, skipTrue, skipFalse)
+func loadAndCompareIPv6SourceAddress(linkType uint32, addr [4]uint32, mask net.IPMask, skipTrue, skipFalse uint8) []bpf.Instruction {
+	return loadAndCompareIPv6Address(linkType, addr, mask, true, skipTrue, skipFalse)
 }
 
 // loadAndCompareIPv6DestinationAddress check the IP6 destination address. skipTrue and skipFalse
 // are the number of steps to skip to true or false. If 0, then it means immediately after the
 // steps in this section, not absolute. Since the number of steps in this section can change,
 // it is important to know if it is absolute (positive number) or just right after (0).
-func loadAndCompareIPv6DestinationAddress(addr [4]uint32, mask net.IPMask, skipTrue, skipFalse uint8) []bpf.Instruction {
-	return loadAndCompareIPv6Address(addr, mask, false, skipTrue, skipFalse)
+func loadAndCompareIPv6DestinationAddress(linkType uint32, addr [4]uint32, mask net.IPMask, skipTrue, skipFalse uint8) []bpf.Instruction {
+	return loadAndCompareIPv6Address(linkType, addr, mask, false, skipTrue, skipFalse)
 }
 
 // loadAndCompareIPv6Address check the IP6 address. skipTrue and skipFalse
 // are the number of steps to skip to true or false. If 0, then it means immediately after the
 // steps in this section, not absolute. Since the number of steps in this section can change,
 // it is important to know if it is absolute (positive number) or just right after (0).
-func loadAndCompareIPv6Address(addr [4]uint32, mask net.IPMask, source bool, skipTrue, skipFalse uint8) []bpf.Instruction {
+func loadAndCompareIPv6Address(linkType uint32, addr [4]uint32, mask net.IPMask, source bool, skipTrue, skipFalse uint8) []bpf.Instruction {
 	var (
 		maskSize = 128
 		maskInst bpf.Instruction
-		start    = ip6SourceAddressStart
+		start    = linkTypeOffset(linkType) + 8 // IPv6 source address starts at offset 8 within the IP header
 		st, sf   uint8
 		// how many steps do we expect?
 		size uint8 = 8
@@ -407,7 +482,7 @@ func loadAndCompareIPv6Address(addr [4]uint32, mask net.IPMask, source bool, ski
 	}
 
 	if !source {
-		start = ip6DestinationAddressStart
+		start = linkTypeOffset(linkType) + 24 // IPv6 destination address starts at offset 24 within the IP header
 	}
 	inst := []bpf.Instruction{}
 

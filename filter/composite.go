@@ -10,15 +10,15 @@ type composite struct {
 	and     bool
 }
 
-func (c composite) Compile() ([]bpf.Instruction, error) {
+func (c composite) Compile(linkType uint32) ([]bpf.Instruction, error) {
 	// first compile each one, then go through them and join with the 'and' or 'or'
 	//   - if 'and', then a failure of any one is straight to fail
 	//   - if 'or', then a failure of any one means to move on to the next
 	// The simplest way to implement is to just have interim jump steps.
 	inst := []bpf.Instruction{}
-	size := uint32(c.Size())
+	size := uint32(c.Size(linkType))
 	for i, f := range c.filters {
-		finst, err := f.Compile()
+		finst, err := f.Compile(linkType)
 		if err != nil {
 			return nil, err
 		}
@@ -59,10 +59,10 @@ func (c composite) Equal(o Filter) bool {
 }
 
 // Size how many elements do we expect
-func (c composite) Size() uint8 {
+func (c composite) Size(linkType uint32) uint8 {
 	var size uint8
 	for _, f := range c.filters {
-		size += f.Size()
+		size += f.Size(linkType)
 	}
 	return size
 }

@@ -186,7 +186,7 @@ func TestFilterSize(t *testing.T) {
 				if tt.err != nil {
 					continue
 				}
-				size := filter.Size()
+				size := filter.Size(tt.linkType)
 				if size != uint8(len(tt.instructions)) {
 					t.Errorf("%d '%s': mismatched size actual %d, expected %d", i, tt.expression, size, len(tt.instructions))
 				}
@@ -201,7 +201,7 @@ func TestFilterCompile(t *testing.T) {
 			for i, tt := range v {
 				e := NewExpression(tt.expression)
 				filter := e.Compile()
-				inst, err := filter.Compile()
+				inst, err := filter.Compile(tt.linkType)
 				switch {
 				case (err != nil && tt.err == nil) || (err == nil && tt.err != nil) || (err != nil && tt.err != nil && err.Error() != tt.err.Error()):
 					t.Errorf("%d '%s': mismatched errors \nActual  : %v\nExpected: %v", i, tt.expression, err, tt.err)

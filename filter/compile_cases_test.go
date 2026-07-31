@@ -17,6 +17,7 @@ import (
 type testCaseExpressions struct {
 	expression   string
 	filter       Filter
+	linkType     uint32
 	err          error
 	instructions []bpf.Instruction
 	_            string // output from "tcpdump -d <expression>"
@@ -38,43 +39,43 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionUnset,
 			protocol:  filterProtocolUnset,
 			id:        "abc",
-		}, fmt.Errorf("parse error"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("parse error"), nil, ""},
 		{"host", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "",
-		}, fmt.Errorf("blank host"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("blank host"), nil, ""},
 		{"host abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "abc",
-		}, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
 		{"src host abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolUnset,
 			id:        "abc",
-		}, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
 		{"dst host abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionDst,
 			protocol:  filterProtocolUnset,
 			id:        "abc",
-		}, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
 		{"src or dst host abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "abc",
-		}, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
 		{"src and dst host abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcAndDst,
 			protocol:  filterProtocolUnset,
 			id:        "abc",
-		}, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("unknown host: %s", "abc"), nil, ""},
 	},
 	"host_ip4": {
 		{"10.100.100.100", primitive{
@@ -82,19 +83,19 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionUnset,
 			protocol:  filterProtocolUnset,
 			id:        "10.100.100.100",
-		}, errors.New("parse error"), nil, ""},
+		}, LinkTypeEthernet, errors.New("parse error"), nil, ""},
 		{"host 10.100.100.100/24", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "10.100.100.100/24",
-		}, fmt.Errorf("invalid host address with CIDR: %s", "10.100.100.100/24"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid host address with CIDR: %s", "10.100.100.100/24"), nil, ""},
 		{"ip host 10.100.100.100", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolIP,
 			id:        "10.100.100.100",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 5},
 			bpf.LoadAbsolute{Off: 26, Size: 4},
@@ -118,7 +119,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolArp,
 			id:        "10.100.100.100",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x806, SkipFalse: 5},
 			bpf.LoadAbsolute{Off: 28, Size: 4},
@@ -142,7 +143,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolUnset,
 			id:        "10.100.100.100",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 2},
 			bpf.LoadAbsolute{Off: 26, Size: 4},
@@ -170,7 +171,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionDst,
 			protocol:  filterProtocolUnset,
 			id:        "10.100.100.100",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 2},
 			bpf.LoadAbsolute{Off: 30, Size: 4},
@@ -198,7 +199,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "10.100.100.100",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 4},
 			bpf.LoadAbsolute{Off: 26, Size: 4},
@@ -219,7 +220,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcAndDst,
 			protocol:  filterProtocolUnset,
 			id:        "10.100.100.100",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 4},
 			bpf.LoadAbsolute{Off: 26, Size: 4},
@@ -257,19 +258,19 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionUnset,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::2004",
-		}, errors.New("parse error"), nil, ""},
+		}, LinkTypeEthernet, errors.New("parse error"), nil, ""},
 		{"host 2a00:1450:4001:824::2004/48", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::2004/48",
-		}, fmt.Errorf("invalid host address with CIDR: %s", "2a00:1450:4001:824::2004/48"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid host address with CIDR: %s", "2a00:1450:4001:824::2004/48"), nil, ""},
 		{"ip6 host 2a00:1450:4001:824::2004", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolIP6,
 			id:        "2a00:1450:4001:824::2004",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 17},
 			bpf.LoadAbsolute{Off: 22, Size: 4},
@@ -317,7 +318,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::2004",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 9},
 			bpf.LoadAbsolute{Off: 22, Size: 4},
@@ -349,7 +350,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::2004",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 9},
 			bpf.LoadAbsolute{Off: 38, Size: 4},
@@ -381,7 +382,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::2004",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 17},
 			bpf.LoadAbsolute{Off: 22, Size: 4},
@@ -408,7 +409,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcAndDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::2004",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 17},
 			bpf.LoadAbsolute{Off: 22, Size: 4},
@@ -458,13 +459,13 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionUnset,
 			protocol:  filterProtocolUnset,
 			id:        "www.google.com",
-		}, errors.New("parse error"), nil, ""},
+		}, LinkTypeEthernet, errors.New("parse error"), nil, ""},
 		{"host www.google.com", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "www.google.com",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},                        // load ethernet protocol
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 4}, // ipv4 next few, else skip
 			bpf.LoadAbsolute{Off: 26, Size: 4},                        // ipv4 src
@@ -534,7 +535,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolUnset,
 			id:        "www.google.com",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},                        // load ethernet protocol
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 2}, // ipv4 next few, else skip
 			bpf.LoadAbsolute{Off: 26, Size: 4},                        // ipv4 src
@@ -580,7 +581,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionDst,
 			protocol:  filterProtocolUnset,
 			id:        "www.google.com",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},                        // load ethernet protocol
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 2}, // ipv4 next few, else skip
 			bpf.LoadAbsolute{Off: 30, Size: 4},                        // ipv4 dst
@@ -626,7 +627,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "www.google.com",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},                        // load ethernet protocol
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 4}, // ipv4 next few, else skip
 			bpf.LoadAbsolute{Off: 26, Size: 4},                        // ipv4 src
@@ -696,7 +697,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcAndDst,
 			protocol:  filterProtocolUnset,
 			id:        "www.google.com",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},                        // load ethernet protocol
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 4}, // ipv4 next few, else skip
 			bpf.LoadAbsolute{Off: 26, Size: 4},                        // ipv4 src
@@ -768,13 +769,13 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "foo",
-		}, fmt.Errorf("invalid port: %s", "foo"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid port: %s", "foo"), nil, ""},
 		{"port 22", primitive{
 			kind:      filterKindPort,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "22",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv6? next several steps; else check ipv6
@@ -833,7 +834,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "ssh",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv6? next several steps; else check ipv6
@@ -867,7 +868,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolUnset,
 			id:        "22",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv6? next several steps; else check ipv6
@@ -918,7 +919,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionDst,
 			protocol:  filterProtocolUnset,
 			id:        "22",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv6? next several steps; else check ipv6
@@ -969,7 +970,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcAndDst,
 			protocol:  filterProtocolUnset,
 			id:        "22",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv6? next several steps; else check ipv6
@@ -1006,7 +1007,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			protocol:    filterProtocolUnset,
 			subProtocol: filterSubProtocolUDP,
 			id:          "23",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv6? next several steps
@@ -1059,13 +1060,13 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "abc",
-		}, fmt.Errorf("invalid net: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid net: %s", "abc"), nil, ""},
 		{"net 192.168.0.0", primitive{
 			kind:      filterKindNet,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "192.168.0.0",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// address is ipv4, so must be one of: ip4/arp/rarp
@@ -1105,7 +1106,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolIP,
 			id:        "192.168.0.0",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0800, SkipFalse: 5},
@@ -1121,13 +1122,13 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "192.168.0.0/10",
-		}, fmt.Errorf("invalid network, network bits extend past mask bits: %s", "192.168.0.0/10"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid network, network bits extend past mask bits: %s", "192.168.0.0/10"), nil, ""},
 		{"net 192.168.0.0/24", primitive{
 			kind:      filterKindNet,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "192.168.0.0/24",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// address is ipv4, so must be one of: ip4/arp/rarp
@@ -1175,7 +1176,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolUnset,
 			id:        "192.168.0.0/24",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// address is ipv4, so must be one of: ip4/arp/rarp
@@ -1211,7 +1212,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionDst,
 			protocol:  filterProtocolUnset,
 			id:        "192.168.0.0/24",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// address is ipv4, so must be one of: ip4/arp/rarp
@@ -1247,7 +1248,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcAndDst,
 			protocol:  filterProtocolUnset,
 			id:        "192.168.0.0/24",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// address is ipv4, so must be one of: ip4/arp/rarp
@@ -1295,7 +1296,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "192.168.0.0/24",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// address is ipv4, so must be one of: ip4/arp/rarp
@@ -1345,7 +1346,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 17},
@@ -1394,7 +1395,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolIP6,
 			id:        "2a00:1450:4001:824::",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 17},
@@ -1443,13 +1444,13 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::/10",
-		}, fmt.Errorf("invalid network, network bits extend past mask bits: %s", "2a00:1450:4001:824::/10"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid network, network bits extend past mask bits: %s", "2a00:1450:4001:824::/10"), nil, ""},
 		{"net 2a00:1450:4001:824::/62", primitive{
 			kind:      filterKindNet,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::/62",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 11},
@@ -1486,7 +1487,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::/62",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 6},
 			bpf.LoadAbsolute{Off: 22, Size: 4}, // ip6 src address part1
@@ -1512,7 +1513,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::/62",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 6},
 			bpf.LoadAbsolute{Off: 38, Size: 4}, // ip6 dst address part1
@@ -1538,7 +1539,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcAndDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::/62",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 11},
 			bpf.LoadAbsolute{Off: 22, Size: 4}, // ip6 src address part1
@@ -1574,7 +1575,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolUnset,
 			id:        "2a00:1450:4001:824::/62",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 11},
@@ -1613,44 +1614,44 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolEther,
 			id:        "abc",
-		}, errors.New("parse error"), nil, ""},
+		}, LinkTypeEthernet, errors.New("parse error"), nil, ""},
 		{"ether dst abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionDst,
 			protocol:  filterProtocolEther,
 			id:        "abc",
-		}, fmt.Errorf("invalid ethernet address: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid ethernet address: %s", "abc"), nil, ""},
 		{"ether src abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolEther,
 			id:        "abc",
-		}, fmt.Errorf("invalid ethernet address: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid ethernet address: %s", "abc"), nil, ""},
 		{"ether host abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolEther,
 			id:        "abc",
-		}, fmt.Errorf("invalid ethernet address: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid ethernet address: %s", "abc"), nil, ""},
 		{"ether src or dst abc", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolEther,
 			id:        "abc",
-		}, fmt.Errorf("invalid ethernet address: %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("invalid ethernet address: %s", "abc"), nil, ""},
 		// the next group have a valid address
 		{"ether aa:bb:cc:dd:ee:ff", primitive{
 			kind:      filterKindUnset,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolEther,
 			id:        "aa:bb:cc:dd:ee:ff",
-		}, errors.New("parse error"), nil, ""},
+		}, LinkTypeEthernet, errors.New("parse error"), nil, ""},
 		{"ether host aa:bb:cc:dd:ee:ff", primitive{
 			kind:      filterKindHost,
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolEther,
 			id:        "aa:bb:cc:dd:ee:ff",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 8, Size: 4}, // last 4 bytes of src mac address
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xccddeeff, SkipFalse: 2},
 			bpf.LoadAbsolute{Off: 6, Size: 2}, // first 2 bytes of src mac address
@@ -1678,7 +1679,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrc,
 			protocol:  filterProtocolEther,
 			id:        "aa:bb:cc:dd:ee:ff",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 8, Size: 4}, // last 4 bytes of src mac address
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xccddeeff, SkipFalse: 3},
 			bpf.LoadAbsolute{Off: 6, Size: 2}, // first 2 bytes of src mac address
@@ -1698,7 +1699,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionDst,
 			protocol:  filterProtocolEther,
 			id:        "aa:bb:cc:dd:ee:ff",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 2, Size: 4}, // last 4 bytes of dst mac address
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xccddeeff, SkipFalse: 3},
 			bpf.LoadAbsolute{Off: 0, Size: 2}, // first 2 bytes of dst mac address
@@ -1718,7 +1719,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcOrDst,
 			protocol:  filterProtocolEther,
 			id:        "aa:bb:cc:dd:ee:ff",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 8, Size: 4}, // last 4 bytes of src mac address
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xccddeeff, SkipFalse: 2},
 			bpf.LoadAbsolute{Off: 6, Size: 2}, // first 2 bytes of src mac address
@@ -1746,7 +1747,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction: filterDirectionSrcAndDst,
 			protocol:  filterProtocolEther,
 			id:        "aa:bb:cc:dd:ee:ff",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			bpf.LoadAbsolute{Off: 8, Size: 4}, // last 4 bytes of src mac address
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xccddeeff, SkipFalse: 7},
 			bpf.LoadAbsolute{Off: 6, Size: 2}, // first 2 bytes of src mac address
@@ -1777,13 +1778,13 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			protocol:    filterProtocolEther,
 			subProtocol: filterSubProtocolUnknown,
 			id:          "foo",
-		}, fmt.Errorf("unknown protocol %s", "foo"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("unknown protocol %s", "foo"), nil, ""},
 		{"ether proto ip", primitive{
 			kind:        filterKindUnset,
 			direction:   filterDirectionSrcOrDst,
 			protocol:    filterProtocolEther,
 			subProtocol: filterSubProtocolIP,
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv4? next several steps, else fail
@@ -1801,7 +1802,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction:   filterDirectionSrcOrDst,
 			protocol:    filterProtocolEther,
 			subProtocol: filterSubProtocolIP6,
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv4? next several steps, else fail
@@ -1819,7 +1820,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction:   filterDirectionSrcOrDst,
 			protocol:    filterProtocolEther,
 			subProtocol: filterSubProtocolArp,
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv4? next several steps, else fail
@@ -1837,7 +1838,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			direction:   filterDirectionSrcOrDst,
 			protocol:    filterProtocolEther,
 			subProtocol: filterSubProtocolRarp,
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv4? next several steps, else fail
@@ -1858,7 +1859,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			protocol:    filterProtocolIP,
 			subProtocol: filterSubProtocolUnknown,
 			id:          "abc",
-		}, fmt.Errorf("unknown protocol %s", "abc"), nil, ""},
+		}, LinkTypeEthernet, fmt.Errorf("unknown protocol %s", "abc"), nil, ""},
 		// valid protocol
 		{"ip proto tcp", primitive{
 			kind:        filterKindUnset,
@@ -1866,7 +1867,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			protocol:    filterProtocolIP,
 			subProtocol: filterSubProtocolTCP,
 			id:          "",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv4? next several steps, else fail
@@ -1889,7 +1890,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			protocol:    filterProtocolIP,
 			subProtocol: filterSubProtocolUDP,
 			id:          "",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv4? next several steps, else fail
@@ -1906,7 +1907,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			protocol:    filterProtocolUnset,
 			subProtocol: filterSubProtocolUDP,
 			id:          "",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv6: next several steps
@@ -1945,7 +1946,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 			protocol:    filterProtocolUnset,
 			subProtocol: filterSubProtocolUDP,
 			id:          "23",
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// get ethernet protocol
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			// ipv6? next several steps
@@ -2009,7 +2010,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 					id:        "23",
 				},
 			},
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// first condition: "host 10.100.100.100"
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 4},
@@ -2155,7 +2156,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 					id:          "domain",
 				},
 			},
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// first: tcp dst port ftp
 			bpf.LoadAbsolute{Off: 12, Size: 2},
 			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86dd, SkipFalse: 4},            // check ipv6
@@ -2291,7 +2292,7 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 					},
 				},
 			},
-		}, nil, []bpf.Instruction{
+		}, LinkTypeEthernet, nil, []bpf.Instruction{
 			// our interim one
 
 			// the first primitive: udp
@@ -2425,6 +2426,205 @@ var testCasesExpressionFilterInstructions = map[string][]testCaseExpressions{
 		(021) ret      #262144
 		(022) ret      #0
 			`},
+	},
+	"loopback_host_ip4": {
+		{"ip host 10.100.100.100", primitive{
+			kind:      filterKindHost,
+			direction: filterDirectionSrcOrDst,
+			protocol:  filterProtocolIP,
+			id:        "10.100.100.100",
+		}, LinkTypeNull, nil, []bpf.Instruction{
+			bpf.LoadAbsolute{Off: 0, Size: 4},                          // protocol family
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x02000000, SkipFalse: 5}, // IPv4?
+			bpf.LoadAbsolute{Off: 16, Size: 4},                         // src address
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipTrue: 2},
+			bpf.LoadAbsolute{Off: 20, Size: 4},                         // dst address
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+		}, `
+		(000) ld       [0]              load protocol family
+		(001) jeq      #0x2000000       jt 2	jf 7     check IPv4
+		(002) ld       [16]             load src IP
+		(003) jeq      #0xa646464       jt 6	jf 4
+		(004) ld       [20]             load dst IP
+		(005) jeq      #0xa646464       jt 6	jf 7
+		(006) ret      #262144
+		(007) ret      #0
+		`},
+		{"src host 10.100.100.100", primitive{
+			kind:      filterKindHost,
+			direction: filterDirectionSrc,
+			protocol:  filterProtocolUnset,
+			id:        "10.100.100.100",
+		}, LinkTypeNull, nil, []bpf.Instruction{
+			bpf.LoadAbsolute{Off: 0, Size: 4},                          // protocol family
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x02000000, SkipFalse: 2}, // IPv4? skip 2, not 3, since no ARP/RARP on loopback
+			bpf.LoadAbsolute{Off: 16, Size: 4},                         // src address
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+		}, `
+		(000) ld       [0]
+		(001) jeq      #0x2000000       jt 2	jf 5
+		(002) ld       [16]
+		(003) jeq      #0xa646464       jt 4	jf 5
+		(004) ret      #524288
+		(005) ret      #0
+		`},
+		{"dst host 10.100.100.100", primitive{
+			kind:      filterKindHost,
+			direction: filterDirectionDst,
+			protocol:  filterProtocolUnset,
+			id:        "10.100.100.100",
+		}, LinkTypeNull, nil, []bpf.Instruction{
+			bpf.LoadAbsolute{Off: 0, Size: 4},                          // protocol family
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x02000000, SkipFalse: 2}, // IPv4? skip 2, not 3, since no ARP/RARP on loopback
+			bpf.LoadAbsolute{Off: 20, Size: 4},                         // dst address
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0xa646464, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+		}, `
+		(000) ld       [0]
+		(001) jeq      #0x2000000       jt 2	jf 5
+		(002) ld       [20]
+		(003) jeq      #0xa646464       jt 4	jf 5
+		(004) ret      #524288
+		(005) ret      #0
+		`},
+	},
+	"loopback_port": {
+		{"tcp port 22", primitive{
+			kind:        filterKindPort,
+			direction:   filterDirectionSrcOrDst,
+			protocol:    filterProtocolUnset,
+			subProtocol: filterSubProtocolTCP,
+			id:          "22",
+		}, LinkTypeNull, nil, []bpf.Instruction{
+			bpf.LoadAbsolute{Off: 0, Size: 4},                            // protocol family
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x1e000000, SkipFalse: 6}, // ipv6?
+			bpf.LoadAbsolute{Off: 10, Size: 1},                           // protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipFalse: 15},    // tcp
+			bpf.LoadAbsolute{Off: 44, Size: 2},                           // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x16, SkipTrue: 12},
+			bpf.LoadAbsolute{Off: 46, Size: 2},                           // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x16, SkipTrue: 10, SkipFalse: 11},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x02000000, SkipFalse: 10}, // ipv4?
+			bpf.LoadAbsolute{Off: 13, Size: 1},                           // protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipFalse: 8},     // tcp
+			bpf.LoadAbsolute{Off: 10, Size: 2},                           // flags+fragment offset
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 6},  // do we have an L4 header?
+			bpf.LoadMemShift{Off: 4},                                     // calculate size of IP header
+			bpf.LoadIndirect{Off: 4, Size: 2},                            // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x16, SkipTrue: 2},
+			bpf.LoadIndirect{Off: 6, Size: 2},                            // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x16, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+		}, `
+		(000) ld       [0]
+		(001) jeq      #0x1e000000      jt 2	jf 8
+		(002) ldb      [10]
+		(003) jeq      #0x6             jt 4	jf 19
+		(004) ldh      [44]
+		(005) jeq      #0x16            jt 18	jf 6
+		(006) ldh      [46]
+		(007) jeq      #0x16            jt 18	jf 19
+		(008) jeq      #0x2000000       jt 9	jf 19
+		(009) ldb      [13]
+		(010) jeq      #0x6             jt 11	jf 19
+		(011) ldh      [10]
+		(012) jset     #0x1fff          jt 19	jf 13
+		(013) ldxb     4*([4]&0xf)
+		(014) ldh      [x + 4]
+		(015) jeq      #0x16            jt 18	jf 16
+		(016) ldh      [x + 6]
+		(017) jeq      #0x16            jt 18	jf 19
+		(018) ret      #524288
+		(019) ret      #0
+		`},
+		{"tcp src port 22", primitive{
+			kind:        filterKindPort,
+			direction:   filterDirectionSrc,
+			protocol:    filterProtocolUnset,
+			subProtocol: filterSubProtocolTCP,
+			id:          "22",
+		}, LinkTypeNull, nil, []bpf.Instruction{
+			bpf.LoadAbsolute{Off: 0, Size: 4},                            // protocol family
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x1e000000, SkipFalse: 4}, // ipv6?
+			bpf.LoadAbsolute{Off: 10, Size: 1},                           // protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipFalse: 11},    // tcp
+			bpf.LoadAbsolute{Off: 44, Size: 2},                           // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x16, SkipTrue: 8, SkipFalse: 9},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x02000000, SkipFalse: 8}, // ipv4?
+			bpf.LoadAbsolute{Off: 13, Size: 1},                           // protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipFalse: 6},     // tcp
+			bpf.LoadAbsolute{Off: 10, Size: 2},                           // flags+fragment offset
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 4},  // do we have an L4 header?
+			bpf.LoadMemShift{Off: 4},                                     // calculate size of IP header
+			bpf.LoadIndirect{Off: 4, Size: 2},                            // src port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x16, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+		}, `
+		(000) ld       [0]
+		(001) jeq      #0x1e000000      jt 2	jf 6
+		(002) ldb      [10]
+		(003) jeq      #0x6             jt 4	jf 15
+		(004) ldh      [44]
+		(005) jeq      #0x16            jt 14	jf 15
+		(006) jeq      #0x2000000       jt 7	jf 15
+		(007) ldb      [13]
+		(008) jeq      #0x6             jt 9	jf 15
+		(009) ldh      [10]
+		(010) jset     #0x1fff          jt 15	jf 11
+		(011) ldxb     4*([4]&0xf)
+		(012) ldh      [x + 4]
+		(013) jeq      #0x16            jt 14	jf 15
+		(014) ret      #524288
+		(015) ret      #0
+		`},
+		{"tcp dst port 80", primitive{
+			kind:        filterKindPort,
+			direction:   filterDirectionDst,
+			protocol:    filterProtocolUnset,
+			subProtocol: filterSubProtocolTCP,
+			id:          "80",
+		}, LinkTypeNull, nil, []bpf.Instruction{
+			bpf.LoadAbsolute{Off: 0, Size: 4},                            // protocol family
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x1e000000, SkipFalse: 4}, // ipv6?
+			bpf.LoadAbsolute{Off: 10, Size: 1},                           // protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipFalse: 11},    // tcp
+			bpf.LoadAbsolute{Off: 46, Size: 2},                           // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x50, SkipTrue: 8, SkipFalse: 9},
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x02000000, SkipFalse: 8}, // ipv4?
+			bpf.LoadAbsolute{Off: 13, Size: 1},                           // protocol
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x06, SkipFalse: 6},     // tcp
+			bpf.LoadAbsolute{Off: 10, Size: 2},                           // flags+fragment offset
+			bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 4},  // do we have an L4 header?
+			bpf.LoadMemShift{Off: 4},                                     // calculate size of IP header
+			bpf.LoadIndirect{Off: 6, Size: 2},                            // dst port
+			bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x50, SkipFalse: 1},
+			bpf.RetConstant{Val: 262144},
+			bpf.RetConstant{Val: 0},
+		}, `
+		(000) ld       [0]
+		(001) jeq      #0x1e000000      jt 2	jf 6
+		(002) ldb      [10]
+		(003) jeq      #0x6             jt 4	jf 15
+		(004) ldh      [46]
+		(005) jeq      #0x50            jt 14	jf 15
+		(006) jeq      #0x2000000       jt 7	jf 15
+		(007) ldb      [13]
+		(008) jeq      #0x6             jt 9	jf 15
+		(009) ldh      [10]
+		(010) jset     #0x1fff          jt 15	jf 11
+		(011) ldxb     4*([4]&0xf)
+		(012) ldh      [x + 6]
+		(013) jeq      #0x50            jt 14	jf 15
+		(014) ret      #524288
+		(015) ret      #0
+		`},
 	},
 }
 
