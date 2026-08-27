@@ -101,6 +101,56 @@ type Handle struct {
 	endian          binary.ByteOrder
 	filter          []bpf.RawInstruction
 	cache           []captured
+	statsMu         sync.Mutex
+	stats           Statistics
+	statsReader     func(int) (Statistics, error)
+}
+
+// Stats reads the packet socket's reset-on-read PACKET_STATISTICS counters and
+// accumulates them under a mutex. The returned values are therefore cumulative
+// and monotonic across multiple readers for the lifetime of this Handle.
+func (h *Handle) Stats() (Statistics, error) {
+	h.statsMu.Lock()
+	defer h.statsMu.Unlock()
+
+	reader := h.statsReader
+	if reader == nil {
+		reader = readPacketStatistics
+	}
+	delta, err := reader(h.fd)
+	if err != nil {
+		return Statistics{}, fmt.Errorf("read PACKET_STATISTICS: %w", err)
+	}
+	h.stats.Packets += delta.Packets
+	h.stats.Drops += delta.Drops
+	return h.stats, nil
+}
+
+func readPacketStatistics(fd int) (Statistics, error) {
+	// TPACKET_V3 returns struct tpacket_stats_v3. Its first two uint32 fields
+	// are the same tp_packets/tp_drops pair returned by older packet versions.
+	var raw struct {
+		Packets          uint32
+		Drops            uint32
+		FreezeQueueCount uint32
+	}
+	length := uint32(unsafe.Sizeof(raw))
+	_, _, errno := syscall.Syscall6(
+		syscall.SYS_GETSOCKOPT,
+		uintptr(fd),
+		uintptr(syscall.SOL_PACKET),
+		uintptr(syscall.PACKET_STATISTICS),
+		uintptr(unsafe.Pointer(&raw)),
+		uintptr(unsafe.Pointer(&length)),
+		0,
+	)
+	if errno != 0 {
+		return Statistics{}, errno
+	}
+	if length < 2*uint32(unsafe.Sizeof(raw.Packets)) {
+		return Statistics{}, fmt.Errorf("PACKET_STATISTICS returned %d bytes, require at least 8", length)
+	}
+	return Statistics{Packets: uint64(raw.Packets), Drops: uint64(raw.Drops)}, nil
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {

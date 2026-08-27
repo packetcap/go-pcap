@@ -47,6 +47,12 @@ type BpfProgram struct {
 	Filter *bpf.RawInstruction
 }
 
+// Stats reports a typed unavailable error because BSD BPF does not expose the
+// Linux PACKET_STATISTICS socket option used by the cumulative implementation.
+func (h *Handle) Stats() (Statistics, error) {
+	return Statistics{}, &StatsUnavailableError{Platform: "darwin/freebsd"}
+}
+
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
 	if h.syscalls {
 		return h.readPacketDataSyscall()
