@@ -101,6 +101,56 @@ type Handle struct {
 	endian          binary.ByteOrder
 	filter          []bpf.RawInstruction
 	cache           []captured
+	statsMu         sync.Mutex
+	stats           Statistics
+	statsReader     func(int) (Statistics, error)
+}
+
+// Stats reads the packet socket's reset-on-read PACKET_STATISTICS counters and
+// accumulates them under a mutex. The returned values are therefore cumulative
+// and monotonic across multiple readers for the lifetime of this Handle.
+func (h *Handle) Stats() (Statistics, error) {
+	h.statsMu.Lock()
+	defer h.statsMu.Unlock()
+
+	reader := h.statsReader
+	if reader == nil {
+		reader = readPacketStatistics
+	}
+	delta, err := reader(h.fd)
+	if err != nil {
+		return Statistics{}, fmt.Errorf("read PACKET_STATISTICS: %w", err)
+	}
+	h.stats.Packets += delta.Packets
+	h.stats.Drops += delta.Drops
+	return h.stats, nil
+}
+
+func readPacketStatistics(fd int) (Statistics, error) {
+	// TPACKET_V3 returns struct tpacket_stats_v3. Its first two uint32 fields
+	// are the same tp_packets/tp_drops pair returned by older packet versions.
+	var raw struct {
+		Packets          uint32
+		Drops            uint32
+		FreezeQueueCount uint32
+	}
+	length := uint32(unsafe.Sizeof(raw))
+	_, _, errno := syscall.Syscall6(
+		syscall.SYS_GETSOCKOPT,
+		uintptr(fd),
+		uintptr(syscall.SOL_PACKET),
+		uintptr(syscall.PACKET_STATISTICS),
+		uintptr(unsafe.Pointer(&raw)),
+		uintptr(unsafe.Pointer(&length)),
+		0,
+	)
+	if errno != 0 {
+		return Statistics{}, errno
+	}
+	if length < 2*uint32(unsafe.Sizeof(raw.Packets)) {
+		return Statistics{}, fmt.Errorf("PACKET_STATISTICS returned %d bytes, require at least 8", length)
+	}
+	return Statistics{Packets: uint64(raw.Packets), Drops: uint64(raw.Drops)}, nil
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
@@ -405,20 +455,100 @@ func (h *Handle) Close() {
 
 // set a classic BPF filter on the listener. filter must be compliant with
 // tcpdump syntax.
+//
+// The socket has been live since openLive's socket()/bind() calls, with no
+// filter installed, so frames may already be queued in the socket's receive
+// buffer and/or committed to the RX ring before this method ever runs. This
+// follows libpcap's own set_kernel_filter() sequence (pcap-linux.c, upstream
+// the-tcpdump-group/libpcap): attach a reject-all "total filter" first (stops
+// anything NEW from queuing), drain everything already queued or ring-
+// committed (flushes anything that arrived during the pre-filter window),
+// then attach the real program. Kernel truncation via the real filter's
+// computed-snap RetA is authoritative only from the point the real filter is
+// attached; this sequence guarantees no frame that arrived before that point
+// is ever delivered to ReadPacketData.
 func (h *Handle) setFilter() error {
-
-	/*
-	 * Try to install the kernel filter.
-	 */
-	prog := syscall.SockFprog{
-		Len:    uint16(len(h.filter)),
-		Filter: (*syscall.SockFilter)(unsafe.Pointer(&h.filter[0])),
+	totalFilter, err := bpf.Assemble([]bpf.Instruction{bpf.RetConstant{Val: 0}})
+	if err != nil {
+		return fmt.Errorf("assembling total (reject-all) filter: %w", err)
 	}
-
-	if err := syscall.SetsockoptSockFprog(h.fd, syscall.SOL_SOCKET, syscall.SO_ATTACH_FILTER, &prog); err != nil {
+	if err := attachRawFilterToFD(h.fd, totalFilter); err != nil {
+		return fmt.Errorf("attaching total filter: %w", err)
+	}
+	if err := h.drainPreAttachFrames(); err != nil {
+		return fmt.Errorf("draining pre-attach frames: %w", err)
+	}
+	if err := attachRawFilterToFD(h.fd, h.filter); err != nil {
 		return fmt.Errorf("unable to set filter: %v", err)
 	}
 	return nil
+}
+
+// attachRawFilterToFD installs raw as the socket's classic-BPF filter via
+// SO_ATTACH_FILTER. Extracted from setFilter so the total-filter/real-filter
+// installs share one code path.
+func attachRawFilterToFD(fd int, raw []bpf.RawInstruction) error {
+	if len(raw) == 0 {
+		return errors.New("empty BPF program")
+	}
+	prog := syscall.SockFprog{
+		Len:    uint16(len(raw)),
+		Filter: (*syscall.SockFilter)(unsafe.Pointer(&raw[0])),
+	}
+	if err := syscall.SetsockoptSockFprog(fd, syscall.SOL_SOCKET, syscall.SO_ATTACH_FILTER, &prog); err != nil {
+		return fmt.Errorf("unable to set filter: %v", err)
+	}
+	return nil
+}
+
+// drainPreAttachFrames discards every frame that queued or was ring-
+// committed before the total filter above stopped new arrivals. The two
+// delivery paths (traditional socket receive queue vs TPACKET_V3 RX ring)
+// are populated independently of which one ReadPacketData will eventually
+// use, so both are drained unconditionally.
+func (h *Handle) drainPreAttachFrames() error {
+	if err := drainSocketQueue(h.fd); err != nil {
+		return err
+	}
+	h.drainRing()
+	return nil
+}
+
+// drainSocketQueue empties the socket's traditional receive queue via
+// non-blocking MSG_TRUNC reads until EAGAIN, mirroring libpcap's
+// `while (recv(handle->fd, &drain, sizeof drain, MSG_TRUNC) >= 0);` drain
+// loop. MSG_DONTWAIT makes this one call non-blocking regardless of the
+// socket's own blocking mode, so it never touches h.state.
+func drainSocketQueue(fd int) error {
+	var buf [1]byte
+	for {
+		_, _, err := syscall.Recvfrom(fd, buf[:], syscall.MSG_DONTWAIT|syscall.MSG_TRUNC)
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil
+		}
+		return fmt.Errorf("drain: recvfrom: %w", err)
+	}
+}
+
+// drainRing returns every already-committed (TP_STATUS_USER) RX ring block
+// to the kernel unread, without ever handing its bytes to a caller. Blocks
+// fill in order starting at index 0, so the first non-USER block marks the
+// end of what queued before the ring existed or before this drain ran.
+func (h *Handle) drainRing() {
+	if h.ring == nil || h.blockSize == 0 || h.blockNumbers == 0 {
+		return
+	}
+	for i := 0; i < h.blockNumbers; i++ {
+		blockBase := i * h.blockSize
+		flagIndex := blockBase + offsetToBlockStatus
+		if h.ring[flagIndex]&syscall.TP_STATUS_USER != syscall.TP_STATUS_USER {
+			break
+		}
+		h.ring[flagIndex] = syscall.TP_STATUS_KERNEL
+	}
 }
 
 func tpacketAlign(base int32) int32 {
